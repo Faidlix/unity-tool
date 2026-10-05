@@ -1,0 +1,14 @@
+{
+  "name": "Faidlix.FDXAttachmentMotion.Runtime",
+  "rootNamespace": "Faidlix.UnityTools",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

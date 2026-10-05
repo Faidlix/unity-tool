@@ -1,0 +1,17 @@
+{
+  "name": "com.faidlix.attachment-motion",
+  "version": "1.0.0",
+  "displayName": "FDX Attachment Motion",
+  "description": "Attach prefabs to Animator bones and add secondary motion, collision, wind, gravity, automatic pivot rigs, flexible endpoints, automatic skin weights, and an editor weight brush.",
+  "unity": "2022.3",
+  "author": {
+    "name": "Faidlix"
+  },
+  "keywords": [
+    "attachment",
+    "secondary-motion",
+    "dynamic-bone",
+    "rigging",
+    "skin-weights"
+  ]
+}
