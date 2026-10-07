@@ -256,26 +256,26 @@ namespace Faidlix.UnityTools.Editor
         private void OnGUI()
         {
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            EditorGUILayout.LabelField("FDX 骨架與權重編輯器（Rig & Weight Editor）", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(new GUIContent("FDX 骨架與權重編輯器", "Rig & Weight Editor"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 "一般物件可先用單一旋轉軸心。只有需要局部彎曲時才建立柔性尾端與自動權重；複雜模型再使用下方筆刷修正。",
                 MessageType.Info);
 
-            motion = (FDX_SecondaryMotion)EditorGUILayout.ObjectField("動態元件（Secondary Motion）", motion,
+            motion = (FDX_SecondaryMotion)EditorGUILayout.ObjectField(new GUIContent("動態元件", "Secondary Motion"), motion,
                 typeof(FDX_SecondaryMotion), true);
-            rendererTarget = (SkinnedMeshRenderer)EditorGUILayout.ObjectField("蒙皮網格（Skinned Mesh）", rendererTarget,
+            rendererTarget = (SkinnedMeshRenderer)EditorGUILayout.ObjectField(new GUIContent("蒙皮網格", "Skinned Mesh"), rendererTarget,
                 typeof(SkinnedMeshRenderer), true);
 
             using (new EditorGUI.DisabledScope(motion == null))
             {
                 EditorGUILayout.Space(6f);
-                EditorGUILayout.LabelField("快速建立（Quick Setup）", EditorStyles.boldLabel);
-                if (GUILayout.Button("建立／選取旋轉軸心（Create / Select Pivot）")) EnsurePivot();
-                if (GUILayout.Button("新增尾端控制點（Add End Point）")) AddEndPoint();
+                EditorGUILayout.LabelField(new GUIContent("快速建立", "Quick Setup"), EditorStyles.boldLabel);
+                if (GUILayout.Button(new GUIContent("建立／選取旋轉軸心", "Create / Select Pivot"))) EnsurePivot();
+                if (GUILayout.Button(new GUIContent("新增尾端控制點", "Add End Point"))) AddEndPoint();
 
                 using (new EditorGUI.DisabledScope(motion == null || motion.EndPoints.Count == 0))
                 {
-                    if (GUILayout.Button("產生柔性骨架並自動計算權重（Generate Rig & Weights）")) GenerateAutomaticRigAndWeights();
+                    if (GUILayout.Button(new GUIContent("產生柔性骨架並自動計算權重", "Generate Rig & Weights"))) GenerateAutomaticRigAndWeights();
                 }
             }
 
@@ -286,7 +286,7 @@ namespace Faidlix.UnityTools.Editor
 
         private void DrawWeightPaintingGUI()
         {
-            EditorGUILayout.LabelField("精細權重（Precise Weights）", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(new GUIContent("精細權重", "Precise Weights"), EditorStyles.boldLabel);
             if (rendererTarget == null || rendererTarget.sharedMesh == null || rendererTarget.bones == null ||
                 rendererTarget.bones.Length == 0)
             {
@@ -298,16 +298,17 @@ namespace Faidlix.UnityTools.Editor
             for (int i = 0; i < names.Length; i++)
                 names[i] = rendererTarget.bones[i] != null ? rendererTarget.bones[i].name : $"Missing Bone {i}";
             selectedBoneIndex = Mathf.Clamp(selectedBoneIndex, 0, names.Length - 1);
-            selectedBoneIndex = EditorGUILayout.Popup("目前骨頭（Current Bone）", selectedBoneIndex, names);
-            brushMode = (BrushMode)EditorGUILayout.EnumPopup("筆刷模式（Brush Mode）", brushMode);
-            brushRadiusPixels = EditorGUILayout.Slider("筆刷畫面半徑（Brush Radius）", brushRadiusPixels, 5f, 160f);
-            brushStrength = EditorGUILayout.Slider("筆刷強度（Brush Strength）", brushStrength, 0.01f, 1f);
-            paintInScene = EditorGUILayout.Toggle("在 Scene 視窗繪製（Paint In Scene）", paintInScene);
-            showAllVertices = EditorGUILayout.Toggle("顯示全部頂點（Show All Vertices）", showAllVertices);
+            selectedBoneIndex = EditorGUILayout.Popup(new GUIContent("目前骨頭", "Current Bone"), selectedBoneIndex, names);
+            string[] brushNames = { "增加", "減少", "取代", "平滑" };
+            brushMode = (BrushMode)EditorGUILayout.Popup(new GUIContent("筆刷模式", "Brush Mode"), (int)brushMode, brushNames);
+            brushRadiusPixels = EditorGUILayout.Slider(new GUIContent("筆刷畫面半徑", "Brush Radius"), brushRadiusPixels, 5f, 160f);
+            brushStrength = EditorGUILayout.Slider(new GUIContent("筆刷強度", "Brush Strength"), brushStrength, 0.01f, 1f);
+            paintInScene = EditorGUILayout.Toggle(new GUIContent("在場景視窗繪製", "Paint In Scene"), paintInScene);
+            showAllVertices = EditorGUILayout.Toggle(new GUIContent("顯示全部頂點", "Show All Vertices"), showAllVertices);
 
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("正規化全部權重（Normalize Weights）")) NormalizeAllWeights();
-            if (GUILayout.Button("儲存目前 Mesh（Save Mesh）")) SaveMesh();
+            if (GUILayout.Button(new GUIContent("正規化全部權重", "Normalize Weights"))) NormalizeAllWeights();
+            if (GUILayout.Button(new GUIContent("儲存目前網格", "Save Mesh"))) SaveMesh();
             EditorGUILayout.EndHorizontal();
 
             if (paintInScene)
