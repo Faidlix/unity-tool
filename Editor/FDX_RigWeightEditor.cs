@@ -28,12 +28,22 @@ namespace Faidlix.UnityTools.Editor
         private bool showAllVertices;
         private Vector2 scroll;
 
+        private sealed class AutoRigSegment
+        {
+            public FDX_SecondaryMotion.FlexibleEndPoint point;
+            public Vector3 start;
+            public Vector3 end;
+            public int boneStart;
+            public int boneCount;
+        }
+
         [MenuItem("Tools/FDX/Attachment Motion/Rig & Weight Editor")]
         public static void Open()
         {
             GetWindow<FDX_RigWeightEditor>("FDX Rig & Weight").Show();
         }
 
+        [MenuItem("Tools/FDX/Attachment Motion/Run Smoke Test")]
         public static void RunBatchSmokeTest()
         {
             GameObject root = null;
@@ -54,15 +64,29 @@ namespace Faidlix.UnityTools.Editor
 
                 var tipObject = new GameObject("FDX_Smoke_Tip");
                 tipObject.transform.SetParent(root.transform, false);
-                tipObject.transform.localPosition = Vector3.forward;
-                testMotion.EndPoints.Add(new FDX_SecondaryMotion.FlexibleEndPoint
+                tipObject.transform.localPosition = new Vector3(0.3f, 0f, 1f);
+                var rootPoint = new FDX_SecondaryMotion.FlexibleEndPoint
                 {
                     displayName = "SmokeTip",
                     tip = tipObject.transform,
                     detectionRadius = 2f,
                     generatedSegments = 3,
-                    motionMultiplier = 1f
+                    motionMultiplier = 1f,
+                    liveMirror = true,
+                    mirrorAxis = FDX_SecondaryMotion.MirrorAxis.X
+                };
+                var childObject = new GameObject("FDX_Smoke_ChildTip");
+                childObject.transform.SetParent(tipObject.transform, false);
+                childObject.transform.localPosition = new Vector3(0.2f, 0f, 0.5f);
+                rootPoint.children.Add(new FDX_SecondaryMotion.FlexibleEndPoint
+                {
+                    displayName = "SmokeChildTip",
+                    tip = childObject.transform,
+                    detectionRadius = 1f,
+                    generatedSegments = 2,
+                    motionMultiplier = 0.8f
                 });
+                testMotion.EndPoints.Add(rootPoint);
 
                 window = CreateInstance<FDX_RigWeightEditor>();
                 window.motion = testMotion;
@@ -71,8 +95,8 @@ namespace Faidlix.UnityTools.Editor
                 SkinnedMeshRenderer result = testMotion.DeformingRenderer;
                 if (result == null || result.sharedMesh == null)
                     throw new InvalidOperationException("Automatic rig did not create a SkinnedMeshRenderer.");
-                if (result.bones == null || result.bones.Length < 2)
-                    throw new InvalidOperationException("Automatic rig did not create the expected bones.");
+                if (result.bones == null || result.bones.Length < 11)
+                    throw new InvalidOperationException("Recursive mirrored automatic rig did not create the expected bones.");
                 if (result.sharedMesh.boneWeights.Length != result.sharedMesh.vertexCount)
                     throw new InvalidOperationException("Generated bone weights do not match the vertex count.");
 
@@ -81,7 +105,61 @@ namespace Faidlix.UnityTools.Editor
                 testMotion.AddImpulse(Vector3.up);
                 testMotion.ClearForces();
                 testMotion.RebuildSimulation();
-                Debug.Log($"FDX_ATTACHMENT_MOTION_SMOKE_OK bones={result.bones.Length} vertices={result.sharedMesh.vertexCount}");
+
+                FDX_AttachmentManager manager = root.AddComponent<FDX_AttachmentManager>();
+                if (manager.FindHierarchyMotionComponents().Count != 1 ||
+                    manager.FindAllMotionComponents().Count != 1)
+                    throw new InvalidOperationException("Attachment Manager did not detect Secondary Motion in its hierarchy.");
+
+                FDX_AttachmentManager.AttachmentSlot searchSlot = manager.AddAttachment();
+                searchSlot.anchorMode = FDX_AttachmentManager.AnchorMode.NameOrPath;
+                searchSlot.searchRoot = root.transform;
+                searchSlot.anchorNameOrPath = "FDX_Smoke_Tip";
+                if (manager.ResolveAnchor(searchSlot) != tipObject.transform)
+                    throw new InvalidOperationException("Name/path anchor lookup did not resolve the expected Transform.");
+                manager.RemoveAttachment(searchSlot);
+
+                var hipsObject = new GameObject("FDX_Smoke_Hips");
+                hipsObject.transform.SetParent(root.transform, false);
+                FDX_SecondaryMotion chainMotion = hipsObject.AddComponent<FDX_SecondaryMotion>();
+                chainMotion.Source = FDX_SecondaryMotion.MotionSource.ExistingBones;
+                chainMotion.SimulationAnchor = hipsObject.transform;
+                var skirtRoot = new GameObject("Skirt_01.L");
+                skirtRoot.transform.SetParent(hipsObject.transform, false);
+                var skirtTip = new GameObject("Skirt_02.L_end");
+                skirtTip.transform.SetParent(skirtRoot.transform, false);
+                skirtTip.transform.localPosition = Vector3.forward * 0.5f;
+                var chain = new FDX_SecondaryMotion.BoneChain
+                {
+                    displayName = "Smoke Skirt Chain",
+                    root = skirtRoot.transform,
+                    includeChildBones = true,
+                    includeEndBone = true
+                };
+                chainMotion.BoneChains.Add(chain);
+                chainMotion.RebuildSimulation();
+                if (!chainMotion.HasValidExistingBones || chainMotion.ValidateSetup().Count != 0)
+                    throw new InvalidOperationException("Existing bone-chain validation failed.");
+                Quaternion chainStart = skirtRoot.transform.localRotation;
+                for (int i = 0; i < 30; i++) chainMotion.PreviewStep(1f / 60f);
+                if (Quaternion.Angle(chainStart, skirtRoot.transform.localRotation) < 0.001f)
+                    throw new InvalidOperationException("Existing bone chain did not simulate.");
+                chainMotion.StopPreview();
+                chain.axisSettings.lockX = chain.axisSettings.lockY = chain.axisSettings.lockZ = true;
+                chainMotion.RebuildSimulation();
+                chainStart = skirtRoot.transform.localRotation;
+                for (int i = 0; i < 30; i++) chainMotion.PreviewStep(1f / 60f);
+                if (Quaternion.Angle(chainStart, skirtRoot.transform.localRotation) > 0.001f)
+                    throw new InvalidOperationException("Fully locked bone chain still moved.");
+                chainMotion.StopPreview();
+
+                Quaternion previewStart = root.transform.localRotation;
+                for (int i = 0; i < 30; i++) manager.PreviewStep(1f / 60f);
+                if (Quaternion.Angle(previewStart, root.transform.localRotation) < 0.001f)
+                    throw new InvalidOperationException("Edit Mode Preview did not rotate the automatic motion target.");
+                manager.StopPreview();
+
+                Debug.Log($"FDX_ATTACHMENT_MOTION_SMOKE_OK bones={result.bones.Length} vertices={result.sharedMesh.vertexCount} chains=1");
             }
             catch (Exception exception)
             {
@@ -101,6 +179,35 @@ namespace Faidlix.UnityTools.Editor
             }
 
             if (Application.isBatchMode) EditorApplication.Exit(0);
+        }
+
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.1.0")]
+        public static void RunBatchExportPackage()
+        {
+            try
+            {
+                string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
+                if (string.IsNullOrEmpty(projectRoot))
+                    throw new InvalidOperationException("Unable to resolve the Unity project root.");
+
+                string releaseDirectory = Path.Combine(projectRoot, "Releases");
+                Directory.CreateDirectory(releaseDirectory);
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.1.0.unitypackage");
+                AssetDatabase.ExportPackage(
+                    "Assets/Scripts/Custom/FDX_AttachmentMotion",
+                    outputPath,
+                    ExportPackageOptions.Recurse);
+                if (!File.Exists(outputPath) || new FileInfo(outputPath).Length == 0)
+                    throw new InvalidOperationException("Unity package export did not create a valid file.");
+                Debug.Log($"FDX_ATTACHMENT_MOTION_PACKAGE_OK path={outputPath}");
+                if (Application.isBatchMode) EditorApplication.Exit(0);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+                throw;
+            }
         }
 
         private void OnEnable()
@@ -135,26 +242,26 @@ namespace Faidlix.UnityTools.Editor
         private void OnGUI()
         {
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            EditorGUILayout.LabelField("FDX 骨架與權重編輯器", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("FDX 骨架與權重編輯器（Rig & Weight Editor）", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 "一般物件可先用單一旋轉軸心。只有需要局部彎曲時才建立柔性尾端與自動權重；複雜模型再使用下方筆刷修正。",
                 MessageType.Info);
 
-            motion = (FDX_SecondaryMotion)EditorGUILayout.ObjectField("Secondary Motion", motion,
+            motion = (FDX_SecondaryMotion)EditorGUILayout.ObjectField("動態元件（Secondary Motion）", motion,
                 typeof(FDX_SecondaryMotion), true);
-            rendererTarget = (SkinnedMeshRenderer)EditorGUILayout.ObjectField("Skinned Mesh", rendererTarget,
+            rendererTarget = (SkinnedMeshRenderer)EditorGUILayout.ObjectField("蒙皮網格（Skinned Mesh）", rendererTarget,
                 typeof(SkinnedMeshRenderer), true);
 
             using (new EditorGUI.DisabledScope(motion == null))
             {
                 EditorGUILayout.Space(6f);
-                EditorGUILayout.LabelField("快速建立", EditorStyles.boldLabel);
-                if (GUILayout.Button("建立／選取旋轉軸心")) EnsurePivot();
-                if (GUILayout.Button("新增尾端控制點")) AddEndPoint();
+                EditorGUILayout.LabelField("快速建立（Quick Setup）", EditorStyles.boldLabel);
+                if (GUILayout.Button("建立／選取旋轉軸心（Create / Select Pivot）")) EnsurePivot();
+                if (GUILayout.Button("新增尾端控制點（Add End Point）")) AddEndPoint();
 
                 using (new EditorGUI.DisabledScope(motion == null || motion.EndPoints.Count == 0))
                 {
-                    if (GUILayout.Button("產生柔性骨架並自動計算權重")) GenerateAutomaticRigAndWeights();
+                    if (GUILayout.Button("產生柔性骨架並自動計算權重（Generate Rig & Weights）")) GenerateAutomaticRigAndWeights();
                 }
             }
 
@@ -165,7 +272,7 @@ namespace Faidlix.UnityTools.Editor
 
         private void DrawWeightPaintingGUI()
         {
-            EditorGUILayout.LabelField("精細權重", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("精細權重（Precise Weights）", EditorStyles.boldLabel);
             if (rendererTarget == null || rendererTarget.sharedMesh == null || rendererTarget.bones == null ||
                 rendererTarget.bones.Length == 0)
             {
@@ -177,16 +284,16 @@ namespace Faidlix.UnityTools.Editor
             for (int i = 0; i < names.Length; i++)
                 names[i] = rendererTarget.bones[i] != null ? rendererTarget.bones[i].name : $"Missing Bone {i}";
             selectedBoneIndex = Mathf.Clamp(selectedBoneIndex, 0, names.Length - 1);
-            selectedBoneIndex = EditorGUILayout.Popup("目前骨頭", selectedBoneIndex, names);
-            brushMode = (BrushMode)EditorGUILayout.EnumPopup("筆刷模式", brushMode);
-            brushRadiusPixels = EditorGUILayout.Slider("筆刷畫面半徑", brushRadiusPixels, 5f, 160f);
-            brushStrength = EditorGUILayout.Slider("筆刷強度", brushStrength, 0.01f, 1f);
-            paintInScene = EditorGUILayout.Toggle("在 Scene 視窗繪製", paintInScene);
-            showAllVertices = EditorGUILayout.Toggle("顯示全部頂點", showAllVertices);
+            selectedBoneIndex = EditorGUILayout.Popup("目前骨頭（Current Bone）", selectedBoneIndex, names);
+            brushMode = (BrushMode)EditorGUILayout.EnumPopup("筆刷模式（Brush Mode）", brushMode);
+            brushRadiusPixels = EditorGUILayout.Slider("筆刷畫面半徑（Brush Radius）", brushRadiusPixels, 5f, 160f);
+            brushStrength = EditorGUILayout.Slider("筆刷強度（Brush Strength）", brushStrength, 0.01f, 1f);
+            paintInScene = EditorGUILayout.Toggle("在 Scene 視窗繪製（Paint In Scene）", paintInScene);
+            showAllVertices = EditorGUILayout.Toggle("顯示全部頂點（Show All Vertices）", showAllVertices);
 
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("正規化全部權重")) NormalizeAllWeights();
-            if (GUILayout.Button("儲存目前 Mesh")) SaveMesh();
+            if (GUILayout.Button("正規化全部權重（Normalize Weights）")) NormalizeAllWeights();
+            if (GUILayout.Button("儲存目前 Mesh（Save Mesh）")) SaveMesh();
             EditorGUILayout.EndHorizontal();
 
             if (paintInScene)
@@ -203,14 +310,13 @@ namespace Faidlix.UnityTools.Editor
             }
 
             Transform item = motion.transform;
-            Transform oldParent = item.parent;
             var go = new GameObject($"{item.name}_FDX_Pivot");
             Undo.RegisterCreatedObjectUndo(go, "Create FDX Pivot");
             Transform pivot = go.transform;
-            pivot.SetPositionAndRotation(item.position, item.rotation);
+            Undo.SetTransformParent(pivot, item, "Parent FDX Pivot To Item");
+            pivot.localPosition = Vector3.zero;
+            pivot.localRotation = Quaternion.identity;
             pivot.localScale = Vector3.one;
-            pivot.SetParent(oldParent, true);
-            Undo.SetTransformParent(item, pivot, "Parent To FDX Pivot");
             Undo.RecordObject(motion, "Assign FDX Pivot");
             motion.RotationPivot = pivot;
             motion.Source = FDX_SecondaryMotion.MotionSource.AutomaticPivot;
@@ -269,35 +375,15 @@ namespace Faidlix.UnityTools.Editor
 
             Transform pivot = motion.RotationPivot;
             var bones = new List<Transform> { pivot };
-            var endpointBoneStarts = new List<int>();
+            var rigSegments = new List<AutoRigSegment>();
 
             Undo.RecordObject(motion, "Generate FDX Rig");
             foreach (FDX_SecondaryMotion.FlexibleEndPoint point in motion.EndPoints)
+                ClearGeneratedBones(point);
+            foreach (FDX_SecondaryMotion.FlexibleEndPoint point in motion.EndPoints)
             {
-                endpointBoneStarts.Add(bones.Count);
-                point.generatedBones.Clear();
-                if (point.tip == null) continue;
-
-                Transform previous = pivot;
-                Vector3 start = pivot.position;
-                Vector3 end = point.tip.position;
-                Vector3 direction = end - start;
-                int segments = Mathf.Clamp(point.generatedSegments, 1, 12);
-                for (int i = 1; i <= segments; i++)
-                {
-                    var boneObject = new GameObject($"FDX_AutoBone_{point.displayName}_{i:00}");
-                    Undo.RegisterCreatedObjectUndo(boneObject, "Create FDX Auto Bone");
-                    Transform bone = boneObject.transform;
-                    bone.position = Vector3.Lerp(start, end, i / (float)segments);
-                    bone.rotation = direction.sqrMagnitude > 0.000001f
-                        ? Quaternion.LookRotation(direction.normalized, pivot.up)
-                        : pivot.rotation;
-                    bone.localScale = Vector3.one;
-                    bone.SetParent(previous, true);
-                    previous = bone;
-                    point.generatedBones.Add(bone);
-                    bones.Add(bone);
-                }
+                BuildAutomaticRigBranch(point, pivot, pivot, pivot.position, pivot.rotation, false,
+                    point.mirrorAxis, true, bones, rigSegments);
             }
 
             if (bones.Count == 1)
@@ -313,8 +399,7 @@ namespace Faidlix.UnityTools.Editor
             for (int i = 0; i < bones.Count; i++)
                 bindPoses[i] = bones[i].worldToLocalMatrix * meshTransform.localToWorldMatrix;
             generatedMesh.bindposes = bindPoses;
-            generatedMesh.boneWeights = CalculateAutomaticWeights(generatedMesh, meshTransform, pivot,
-                endpointBoneStarts);
+            generatedMesh.boneWeights = CalculateAutomaticWeights(generatedMesh, meshTransform, rigSegments);
             generatedMesh.RecalculateBounds();
             EditorUtility.SetDirty(generatedMesh);
 
@@ -343,8 +428,83 @@ namespace Faidlix.UnityTools.Editor
             SceneView.RepaintAll();
         }
 
-        private BoneWeight[] CalculateAutomaticWeights(Mesh mesh, Transform meshTransform, Transform pivot,
-            IReadOnlyList<int> endpointBoneStarts)
+        private static void ClearGeneratedBones(FDX_SecondaryMotion.FlexibleEndPoint point)
+        {
+            if (point == null) return;
+            point.generatedBones.Clear();
+            foreach (FDX_SecondaryMotion.FlexibleEndPoint child in point.children) ClearGeneratedBones(child);
+        }
+
+        private void BuildAutomaticRigBranch(FDX_SecondaryMotion.FlexibleEndPoint point, Transform controlParent,
+            Transform boneParent, Vector3 start, Quaternion startRotation, bool mirrored,
+            FDX_SecondaryMotion.MirrorAxis mirrorAxis, bool allowLiveMirror, List<Transform> bones,
+            List<AutoRigSegment> rigSegments)
+        {
+            if (point == null || point.tip == null) return;
+            Vector3 end;
+            Quaternion endRotation;
+            if (mirrored)
+            {
+                Vector3 local = controlParent.InverseTransformPoint(point.tip.position);
+                end = start + startRotation * FDX_SecondaryMotion.MirrorLocalPoint(local, mirrorAxis);
+                endRotation = startRotation * MirrorLocalRotation(point.tip.localRotation, mirrorAxis);
+            }
+            else
+            {
+                end = point.tip.position;
+                endRotation = point.tip.rotation;
+            }
+
+            Vector3 direction = end - start;
+            int segmentCount = Mathf.Clamp(point.generatedSegments, 1, 12);
+            int boneStart = bones.Count;
+            Transform previous = boneParent;
+            for (int i = 1; i <= segmentCount; i++)
+            {
+                string mirrorSuffix = mirrored ? "_Mirror" : string.Empty;
+                var boneObject = new GameObject($"FDX_AutoBone_{point.displayName}{mirrorSuffix}_{i:00}");
+                Undo.RegisterCreatedObjectUndo(boneObject, "Create FDX Auto Bone");
+                if (mirrored) boneObject.hideFlags = HideFlags.HideInHierarchy;
+                Transform bone = boneObject.transform;
+                bone.position = Vector3.Lerp(start, end, i / (float)segmentCount);
+                bone.rotation = direction.sqrMagnitude > 0.000001f
+                    ? Quaternion.LookRotation(direction.normalized, startRotation * Vector3.up)
+                    : startRotation;
+                bone.localScale = Vector3.one;
+                bone.SetParent(previous, true);
+                previous = bone;
+                point.generatedBones.Add(bone);
+                bones.Add(bone);
+            }
+            rigSegments.Add(new AutoRigSegment
+            {
+                point = point,
+                start = start,
+                end = end,
+                boneStart = boneStart,
+                boneCount = segmentCount
+            });
+
+            foreach (FDX_SecondaryMotion.FlexibleEndPoint child in point.children)
+                BuildAutomaticRigBranch(child, point.tip, previous, end, endRotation, mirrored, mirrorAxis,
+                    false, bones, rigSegments);
+
+            if (allowLiveMirror && point.liveMirror)
+                BuildAutomaticRigBranch(point, controlParent, boneParent, start, startRotation, true,
+                    point.mirrorAxis, false, bones, rigSegments);
+        }
+
+        private static Quaternion MirrorLocalRotation(Quaternion rotation, FDX_SecondaryMotion.MirrorAxis axis)
+        {
+            Vector3 euler = rotation.eulerAngles;
+            if (axis == FDX_SecondaryMotion.MirrorAxis.X) { euler.y = -euler.y; euler.z = -euler.z; }
+            else if (axis == FDX_SecondaryMotion.MirrorAxis.Y) { euler.x = -euler.x; euler.z = -euler.z; }
+            else { euler.x = -euler.x; euler.y = -euler.y; }
+            return Quaternion.Euler(euler);
+        }
+
+        private BoneWeight[] CalculateAutomaticWeights(Mesh mesh, Transform meshTransform,
+            IReadOnlyList<AutoRigSegment> rigSegments)
         {
             Vector3[] vertices = mesh.vertices;
             var weights = new BoneWeight[vertices.Length];
@@ -356,12 +516,11 @@ namespace Faidlix.UnityTools.Editor
                 int bestBone = 0;
                 float bestAlong = 0f;
 
-                for (int endpointIndex = 0; endpointIndex < motion.EndPoints.Count; endpointIndex++)
+                foreach (AutoRigSegment rigSegment in rigSegments)
                 {
-                    FDX_SecondaryMotion.FlexibleEndPoint point = motion.EndPoints[endpointIndex];
-                    if (point.tip == null || point.generatedBones.Count == 0) continue;
-                    Vector3 start = pivot.position;
-                    Vector3 end = point.tip.position;
+                    FDX_SecondaryMotion.FlexibleEndPoint point = rigSegment.point;
+                    Vector3 start = rigSegment.start;
+                    Vector3 end = rigSegment.end;
                     Vector3 segment = end - start;
                     float lengthSquared = segment.sqrMagnitude;
                     if (lengthSquared < 0.000001f) continue;
@@ -375,9 +534,9 @@ namespace Faidlix.UnityTools.Editor
 
                     bestScore = score;
                     bestAlong = along;
-                    int segmentIndex = Mathf.Clamp(Mathf.CeilToInt(along * point.generatedBones.Count) - 1,
-                        0, point.generatedBones.Count - 1);
-                    bestBone = endpointBoneStarts[endpointIndex] + segmentIndex;
+                    int segmentIndex = Mathf.Clamp(Mathf.CeilToInt(along * rigSegment.boneCount) - 1,
+                        0, rigSegment.boneCount - 1);
+                    bestBone = rigSegment.boneStart + segmentIndex;
                 }
 
                 float flexibleWeight = Mathf.Clamp01(bestScore * bestAlong);
@@ -590,7 +749,67 @@ namespace Faidlix.UnityTools.Editor
         }
     }
 
-    [CustomEditor(typeof(FDX_AttachmentManager))]
+    [InitializeOnLoad]
+    internal static class FDX_EditModePreviewDriver
+    {
+        private static readonly HashSet<FDX_AttachmentManager> activeManagers =
+            new HashSet<FDX_AttachmentManager>();
+        private static double previousTime;
+        private static double nextDiscoveryTime;
+
+        static FDX_EditModePreviewDriver()
+        {
+            previousTime = EditorApplication.timeSinceStartup;
+            EditorApplication.update += Update;
+            AssemblyReloadEvents.beforeAssemblyReload += StopAll;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+        }
+
+        private static void Update()
+        {
+            double now = EditorApplication.timeSinceStartup;
+            float deltaTime = Mathf.Clamp((float)(now - previousTime), 1f / 240f, 1f / 20f);
+            previousTime = now;
+
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+            if (now >= nextDiscoveryTime)
+            {
+                nextDiscoveryTime = now + 0.5d;
+                foreach (FDX_AttachmentManager manager in Resources.FindObjectsOfTypeAll<FDX_AttachmentManager>())
+                    if (manager != null && manager.PreviewInEditMode && manager.enabled &&
+                        manager.gameObject.scene.IsValid()) activeManagers.Add(manager);
+            }
+
+            var inactive = new List<FDX_AttachmentManager>();
+            foreach (FDX_AttachmentManager manager in activeManagers)
+            {
+                if (manager == null || !manager.PreviewInEditMode || !manager.enabled ||
+                    !manager.gameObject.scene.IsValid())
+                {
+                    if (manager != null) manager.StopPreview();
+                    inactive.Add(manager);
+                    continue;
+                }
+                manager.PreviewStep(deltaTime);
+            }
+            foreach (FDX_AttachmentManager manager in inactive) activeManagers.Remove(manager);
+            if (activeManagers.Count > 0) SceneView.RepaintAll();
+        }
+
+        private static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingEditMode) StopAll();
+        }
+
+        private static void StopAll()
+        {
+            foreach (FDX_AttachmentManager manager in activeManagers)
+                if (manager != null) manager.StopPreview();
+            activeManagers.Clear();
+        }
+    }
+
     internal sealed class FDX_AttachmentManagerEditor : UnityEditor.Editor
     {
         private readonly Dictionary<int, UnityEditor.Editor> motionEditors = new Dictionary<int, UnityEditor.Editor>();
@@ -603,10 +822,23 @@ namespace Faidlix.UnityTools.Editor
 
             var manager = (FDX_AttachmentManager)target;
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("偵測到的動態元件", EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
+            bool preview = EditorGUILayout.Toggle(
+                new GUIContent("編輯模式預覽（Edit Mode Preview）", "不進入 Play Mode，直接在 Scene View 預覽擺動效果。"),
+                manager.PreviewInEditMode);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(manager, "Toggle FDX Edit Mode Preview");
+                manager.PreviewInEditMode = preview;
+                if (!preview) manager.StopPreview();
+                EditorUtility.SetDirty(manager);
+                SceneView.RepaintAll();
+            }
+
+            EditorGUILayout.LabelField("偵測到的動態元件（Detected Motion Components）", EditorStyles.boldLabel);
 
             if (manager.SettingsMode == FDX_AttachmentManager.MotionSettingsMode.Unified &&
-                GUILayout.Button("將統一設定套用到全部未設為個別的物件"))
+                GUILayout.Button("將統一設定套用到全部物件（Apply Shared Settings To All）"))
             {
                 RecordAllMotionUndo(manager);
                 manager.ApplySharedSettingsToAll();
@@ -614,10 +846,12 @@ namespace Faidlix.UnityTools.Editor
             }
 
             bool foundAny = false;
+            var displayedMotions = new HashSet<FDX_SecondaryMotion>();
             foreach (FDX_AttachmentManager.AttachmentSlot slot in manager.Attachments)
             {
                 if (slot == null || slot.source == null) continue;
                 List<FDX_SecondaryMotion> motions = manager.FindMotionComponents(slot);
+                motions.RemoveAll(motion => motion == null || !displayedMotions.Add(motion));
                 if (motions.Count == 0) continue;
                 foundAny = true;
 
@@ -629,35 +863,61 @@ namespace Faidlix.UnityTools.Editor
                                       slot.useIndividualMotionSettings;
                 if (!showIndividual)
                 {
-                    EditorGUILayout.HelpBox($"偵測到 {motions.Count} 個 FDX_SecondaryMotion，目前使用全員統一設定。",
+                    EditorGUILayout.HelpBox($"偵測到 {motions.Count} 個 FDX_SecondaryMotion，目前使用全員統一設定（Unified Settings）。",
                         MessageType.Info);
                 }
                 else
                 {
-                    foreach (FDX_SecondaryMotion motion in motions)
-                    {
-                        if (motion == null) continue;
-                        int id = motion.GetInstanceID();
-                        motionEditors.TryGetValue(id, out UnityEditor.Editor childEditor);
-                        CreateCachedEditor(motion, null, ref childEditor);
-                        motionEditors[id] = childEditor;
-                        EditorGUILayout.LabelField(motion.name, EditorStyles.miniBoldLabel);
-                        childEditor.OnInspectorGUI();
-                    }
+                    DrawMotionEditors(motions);
+                }
+                EditorGUILayout.EndVertical();
+            }
+
+            List<FDX_SecondaryMotion> hierarchyMotions = manager.FindHierarchyMotionComponents();
+            hierarchyMotions.RemoveAll(motion => motion == null || !displayedMotions.Add(motion));
+            if (hierarchyMotions.Count > 0)
+            {
+                foundAny = true;
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.LabelField("Animator 現有子階層（Animator Hierarchy）", EditorStyles.boldLabel);
+                if (manager.SettingsMode == FDX_AttachmentManager.MotionSettingsMode.Unified)
+                {
+                    EditorGUILayout.HelpBox(
+                        $"自動偵測到 {hierarchyMotions.Count} 個 FDX_SecondaryMotion，目前使用全員統一設定（Unified Settings）。",
+                        MessageType.Info);
+                    foreach (FDX_SecondaryMotion motion in hierarchyMotions)
+                        EditorGUILayout.ObjectField(motion.name, motion, typeof(FDX_SecondaryMotion), true);
+                }
+                else
+                {
+                    DrawMotionEditors(hierarchyMotions);
                 }
                 EditorGUILayout.EndVertical();
             }
 
             if (!foundAny)
-                EditorGUILayout.HelpBox("目前掛載來源內沒有偵測到 FDX_SecondaryMotion。它仍可作為一般掛載物件使用。",
+                EditorGUILayout.HelpBox("掛載來源與 Animator 子階層內都沒有偵測到 FDX_SecondaryMotion（No motion component detected）。",
                     MessageType.None);
+        }
+
+        private void DrawMotionEditors(List<FDX_SecondaryMotion> motions)
+        {
+            foreach (FDX_SecondaryMotion motion in motions)
+            {
+                if (motion == null) continue;
+                int id = motion.GetInstanceID();
+                motionEditors.TryGetValue(id, out UnityEditor.Editor childEditor);
+                CreateCachedEditor(motion, null, ref childEditor);
+                motionEditors[id] = childEditor;
+                EditorGUILayout.LabelField(motion.name, EditorStyles.miniBoldLabel);
+                childEditor.OnInspectorGUI();
+            }
         }
 
         private static void RecordAllMotionUndo(FDX_AttachmentManager manager)
         {
             var objects = new List<UnityEngine.Object>();
-            foreach (FDX_AttachmentManager.AttachmentSlot slot in manager.Attachments)
-                objects.AddRange(manager.FindMotionComponents(slot));
+            objects.AddRange(manager.FindAllMotionComponents());
             if (objects.Count > 0) Undo.RecordObjects(objects.ToArray(), "Apply FDX Motion Settings");
         }
 
@@ -669,7 +929,6 @@ namespace Faidlix.UnityTools.Editor
         }
     }
 
-    [CustomEditor(typeof(FDX_SecondaryMotion))]
     internal sealed class FDX_SecondaryMotionEditor : UnityEditor.Editor
     {
         private SerializedProperty motionSource;
@@ -784,14 +1043,13 @@ namespace Faidlix.UnityTools.Editor
         {
             var motion = (FDX_SecondaryMotion)target;
             Transform item = motion.transform;
-            Transform oldParent = item.parent;
             var go = new GameObject($"{item.name}_FDX_Pivot");
             Undo.RegisterCreatedObjectUndo(go, "Create FDX Pivot");
             Transform pivot = go.transform;
-            pivot.SetPositionAndRotation(item.position, item.rotation);
+            Undo.SetTransformParent(pivot, item, "Parent FDX Pivot To Item");
+            pivot.localPosition = Vector3.zero;
+            pivot.localRotation = Quaternion.identity;
             pivot.localScale = Vector3.one;
-            pivot.SetParent(oldParent, true);
-            Undo.SetTransformParent(item, pivot, "Parent To FDX Pivot");
             rotationPivot.objectReferenceValue = pivot;
             serializedObject.ApplyModifiedProperties();
             Selection.activeTransform = pivot;
