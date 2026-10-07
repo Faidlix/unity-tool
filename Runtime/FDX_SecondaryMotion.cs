@@ -176,6 +176,7 @@ namespace Faidlix.UnityTools
         public enum MotionSource { AutomaticPivot, ExistingBones }
         public enum MirrorAxis { X, Y, Z }
         public enum ForceSpace { World, AnchorLocal }
+        public enum PivotReplicationMode { None, Mirror, Radial }
 
         [Serializable]
         public sealed class BoneEntry
@@ -191,17 +192,22 @@ namespace Faidlix.UnityTools
         public sealed class BoneChain
         {
             [HideInInspector] public string editorId;
+            [HideInInspector] public int dataVersion;
+            [HideInInspector] public bool expanded = true;
             public string displayName = "Bone Chain";
             public bool enabled = true;
             public bool solo;
             public Transform root;
             public bool includeChildBones = true;
             public bool includeAllBranches = true;
+            public bool allBonesSway = true;
+            [Min(1)] public int boneMotionLevels = 1;
             public Transform endBone;
             public bool includeEndBone = true;
             public List<Transform> excludedBones = new List<Transform>();
             [Range(0f, 2f)] public float influence = 1f;
             [Min(0.001f)] public float displayRadius = 0.04f;
+            public bool scaleGizmoByDepth;
             public FDX_AxisControlSettings axisSettings = new FDX_AxisControlSettings();
         }
 
@@ -236,6 +242,7 @@ namespace Faidlix.UnityTools
         [Serializable]
         public sealed class PivotGroup
         {
+            [HideInInspector] public int dataVersion;
             public string displayName = "Rotation Pivot";
             public bool enabled = true;
             public bool solo;
@@ -250,6 +257,12 @@ namespace Faidlix.UnityTools
             public bool liveMirror;
             public MirrorAxis mirrorAxis = MirrorAxis.X;
             public Transform mirrorCenter;
+            public PivotReplicationMode replicationMode;
+            public bool mirrorX = true;
+            public bool mirrorY;
+            public bool mirrorZ;
+            [Range(1, 32)] public int radialCopies = 1;
+            public MirrorAxis radialAxis = MirrorAxis.Y;
             public bool enableAdvancedFlexible;
             public List<FlexibleEndPoint> endPoints = new List<FlexibleEndPoint>();
             [HideInInspector] public bool expanded = true;
@@ -265,6 +278,7 @@ namespace Faidlix.UnityTools
         [SerializeField, HideInInspector] private bool boneCandidatesExpanded = true;
         [SerializeField, HideInInspector] private bool boneChainsExpanded = true;
         [SerializeField, HideInInspector] private bool pivotGroupsExpanded = true;
+        [SerializeField, HideInInspector] private bool motionSettingsExpanded = true;
         [SerializeField, HideInInspector] private bool simulationAnchorAutomaticallyAssigned;
         [SerializeField] private List<BoneEntry> existingBones = new List<BoneEntry>();
         [SerializeField] private bool autoCreatePivot = true;
@@ -283,6 +297,7 @@ namespace Faidlix.UnityTools
         [SerializeField] private Color pivotColor = new Color(0.1f, 0.85f, 1f, 0.9f);
         [SerializeField] private Color endPointColor = new Color(1f, 0.55f, 0.1f, 0.9f);
         [SerializeField] private Color mirrorColor = new Color(0.7f, 0.35f, 1f, 0.75f);
+        [SerializeField] private Color boneRootColor = new Color(0.2f, 1f, 0.45f, 0.95f);
         [SerializeField, Min(0.001f)] private float pivotGizmoRadius = 0.08f;
         [SerializeField, Min(0.001f)] private float endPointGizmoRadius = 0.045f;
 
@@ -322,6 +337,8 @@ namespace Faidlix.UnityTools
         private bool initialized;
 
         public MotionSource Source { get => motionSource; set => motionSource = value; }
+        public bool Simulate { get => simulate; set => simulate = value; }
+        public ForceSpace Forces { get => forceSpace; set => forceSpace = value; }
         public FDX_MotionSettings Settings => settings;
         public Transform SimulationAnchor { get => simulationAnchor; set => simulationAnchor = value; }
         public Transform RotationPivot
@@ -359,6 +376,7 @@ namespace Faidlix.UnityTools
         public bool BoneCandidatesExpanded { get => boneCandidatesExpanded; set => boneCandidatesExpanded = value; }
         public bool BoneChainsExpanded { get => boneChainsExpanded; set => boneChainsExpanded = value; }
         public bool PivotGroupsExpanded { get => pivotGroupsExpanded; set => pivotGroupsExpanded = value; }
+        public bool MotionSettingsExpanded { get => motionSettingsExpanded; set => motionSettingsExpanded = value; }
         public bool SimulationAnchorAutomaticallyAssigned
         {
             get => simulationAnchorAutomaticallyAssigned;
@@ -613,7 +631,7 @@ namespace Faidlix.UnityTools
         private void AddBoneChain(BoneChain chain, HashSet<Transform> used)
         {
             if (chain == null || !chain.enabled || chain.root == null) return;
-            AddBoneRecursive(chain.root, chain, used);
+            AddBoneRecursive(chain.root, chain, used, 0);
         }
 
         private void EnsureDataIntegrity()
@@ -629,6 +647,7 @@ namespace Faidlix.UnityTools
             foreach (BoneChain chain in boneChains)
             {
                 if (chain == null) continue;
+                MigrateBoneChain(chain);
                 if (string.IsNullOrWhiteSpace(chain.editorId)) chain.editorId = Guid.NewGuid().ToString("N");
                 if (chain.excludedBones == null) chain.excludedBones = new List<Transform>();
                 if (chain.axisSettings == null) chain.axisSettings = new FDX_AxisControlSettings();
@@ -640,6 +659,7 @@ namespace Faidlix.UnityTools
             foreach (PivotGroup group in pivotGroups)
             {
                 if (group == null) continue;
+                MigratePivotReplication(group);
                 if (group.axisSettings == null) group.axisSettings = new FDX_AxisControlSettings();
                 if (group.endPoints == null) group.endPoints = new List<FlexibleEndPoint>();
                 foreach (FlexibleEndPoint point in group.endPoints) EnsureEndPointData(point);
@@ -707,6 +727,7 @@ namespace Faidlix.UnityTools
             showGizmos = true;
             showAllInfluenceRanges = true;
             pivotColor = new Color(0.1f, 0.85f, 1f, 0.9f);
+            boneRootColor = new Color(0.2f, 1f, 0.45f, 0.95f);
             endPointColor = new Color(1f, 0.55f, 0.1f, 0.9f);
             mirrorColor = new Color(0.7f, 0.35f, 1f, 0.75f);
             pivotGizmoRadius = 0.08f;
@@ -714,7 +735,43 @@ namespace Faidlix.UnityTools
             boneCandidatesExpanded = true;
             boneChainsExpanded = true;
             pivotGroupsExpanded = true;
+            motionSettingsExpanded = true;
             initialized = false;
+        }
+
+        private static void MigrateBoneChain(BoneChain chain)
+        {
+            if (chain.dataVersion > 0) return;
+            if (chain.endBone != null && chain.root != null)
+            {
+                int levels = 1;
+                Transform current = chain.endBone;
+                while (current != null && current != chain.root)
+                {
+                    levels++;
+                    current = current.parent;
+                }
+                if (current == chain.root)
+                {
+                    chain.allBonesSway = false;
+                    chain.boneMotionLevels = Mathf.Max(1, levels - (chain.includeEndBone ? 0 : 1));
+                }
+            }
+            chain.dataVersion = 1;
+        }
+
+        private static void MigratePivotReplication(PivotGroup group)
+        {
+            if (group.dataVersion > 0) return;
+            if (group.liveMirror)
+            {
+                group.replicationMode = PivotReplicationMode.Mirror;
+                group.mirrorX = group.mirrorAxis == MirrorAxis.X;
+                group.mirrorY = group.mirrorAxis == MirrorAxis.Y;
+                group.mirrorZ = group.mirrorAxis == MirrorAxis.Z;
+            }
+            group.radialCopies = Mathf.Clamp(group.radialCopies, 1, 32);
+            group.dataVersion = 1;
         }
 
         private void MigrateLegacyPivot()
@@ -747,11 +804,10 @@ namespace Faidlix.UnityTools
             foreach (FlexibleEndPoint child in point.children) EnsureEndPointData(child);
         }
 
-        private bool AddBoneRecursive(Transform bone, BoneChain chain, HashSet<Transform> used)
+        private bool AddBoneRecursive(Transform bone, BoneChain chain, HashSet<Transform> used, int depth)
         {
             if (bone == null || chain.excludedBones.Contains(bone)) return false;
-            bool isEnd = chain.endBone != null && bone == chain.endBone;
-            if ((!isEnd || chain.includeEndBone) && used.Add(bone))
+            if (used.Add(bone))
             {
                 Transform directionChild = FindFirstUsableChild(bone, chain);
                 Vector3 axis = directionChild != null
@@ -760,11 +816,31 @@ namespace Faidlix.UnityTools
                 float length = directionChild != null ? Vector3.Distance(bone.position, directionChild.position) : 0.1f;
                 AddState(bone, axis, length, chain.influence, chain.axisSettings);
             }
-            if (isEnd || !chain.includeChildBones) return isEnd;
+            if (!chain.includeChildBones || (!chain.allBonesSway && depth + 1 >= Mathf.Max(1, chain.boneMotionLevels)))
+                return true;
             int childLimit = chain.includeAllBranches ? bone.childCount : Mathf.Min(1, bone.childCount);
             for (int i = 0; i < childLimit; i++)
-                if (AddBoneRecursive(bone.GetChild(i), chain, used) && chain.endBone != null) return true;
-            return false;
+                AddBoneRecursive(bone.GetChild(i), chain, used, depth + 1);
+            return true;
+        }
+
+        public static int GetBoneChainDepth(BoneChain chain)
+        {
+            if (chain == null || chain.root == null) return 1;
+            return GetBoneDepthRecursive(chain.root, chain, 1);
+        }
+
+        private static int GetBoneDepthRecursive(Transform bone, BoneChain chain, int level)
+        {
+            int maximum = level;
+            int childLimit = chain.includeAllBranches ? bone.childCount : Mathf.Min(1, bone.childCount);
+            for (int i = 0; i < childLimit; i++)
+            {
+                Transform child = bone.GetChild(i);
+                if (chain.excludedBones.Contains(child)) continue;
+                maximum = Mathf.Max(maximum, GetBoneDepthRecursive(child, chain, level + 1));
+            }
+            return maximum;
         }
 
         private static Transform FindFirstUsableChild(Transform bone, BoneChain chain)
@@ -900,6 +976,7 @@ namespace Faidlix.UnityTools
         private Transform ResolveSimulationAnchor(PivotGroup group, Transform motionTarget)
         {
             if (!group.automaticSimulationAnchor && group.simulationAnchor != null) return group.simulationAnchor;
+            if (motionTarget != null && motionTarget.parent != null) return motionTarget.parent;
             Transform pivot = group.pivot != null ? group.pivot : motionTarget;
             return pivot != null && pivot.parent != null ? pivot.parent : pivot;
         }
@@ -1002,38 +1079,72 @@ namespace Faidlix.UnityTools
                 if (group.enableAdvancedFlexible)
                     foreach (FlexibleEndPoint point in group.endPoints)
                         DrawEndPointGizmos(point, pivot, false, pivot.position, pivot.rotation);
-                if (group.liveMirror) DrawMirroredPivotGizmo(group, pivot);
+                DrawReplicatedPivotGizmos(group, pivot);
             }
         }
 
-        private void DrawMirroredPivotGizmo(PivotGroup group, Transform pivot)
+        private void DrawReplicatedPivotGizmos(PivotGroup group, Transform pivot)
         {
+            var positions = new List<Vector3>();
+            GetReplicatedPivotPositions(group, positions);
+            foreach (Vector3 position in positions)
+            {
+                Gizmos.color = mirrorColor;
+                Gizmos.DrawWireSphere(position, pivotGizmoRadius);
+                if (showAllInfluenceRanges) Gizmos.DrawWireSphere(position, group.influenceRadius);
+            }
+        }
+
+        public void GetReplicatedPivotPositions(PivotGroup group, List<Vector3> results)
+        {
+            results.Clear();
+            if (group == null || group.pivot == null || group.replicationMode == PivotReplicationMode.None) return;
             Transform center = group.mirrorCenter != null ? group.mirrorCenter : transform;
-            Vector3 mirrored = center.TransformPoint(MirrorLocalPoint(center.InverseTransformPoint(pivot.position), group.mirrorAxis));
-            Gizmos.color = mirrorColor;
-            Gizmos.DrawWireSphere(mirrored, pivotGizmoRadius);
-            if (showAllInfluenceRanges) Gizmos.DrawWireSphere(mirrored, group.influenceRadius);
+            Vector3 local = center.InverseTransformPoint(group.pivot.position);
+            if (group.replicationMode == PivotReplicationMode.Mirror)
+            {
+                int axisMask = (group.mirrorX ? 1 : 0) | (group.mirrorY ? 2 : 0) | (group.mirrorZ ? 4 : 0);
+                for (int mask = 1; mask < 8; mask++)
+                {
+                    if ((mask & ~axisMask) != 0) continue;
+                    Vector3 mirrored = local;
+                    if ((mask & 1) != 0) mirrored.x = -mirrored.x;
+                    if ((mask & 2) != 0) mirrored.y = -mirrored.y;
+                    if ((mask & 4) != 0) mirrored.z = -mirrored.z;
+                    results.Add(center.TransformPoint(mirrored));
+                }
+                return;
+            }
+
+            int copies = Mathf.Clamp(group.radialCopies, 1, 32);
+            float spacing = 360f / (copies + 1f);
+            Vector3 axis = group.radialAxis == MirrorAxis.X ? Vector3.right :
+                group.radialAxis == MirrorAxis.Y ? Vector3.up : Vector3.forward;
+            for (int i = 1; i <= copies; i++)
+                results.Add(center.TransformPoint(Quaternion.AngleAxis(spacing * i, axis) * local));
         }
 
         private void DrawBoneChainGizmos()
         {
             foreach (BoneChain chain in boneChains)
-                if (chain != null && chain.enabled && chain.root != null) DrawBoneGizmoRecursive(chain.root, chain);
+                if (chain != null && chain.enabled && chain.root != null) DrawBoneGizmoRecursive(chain.root, chain, 0);
         }
 
-        private void DrawBoneGizmoRecursive(Transform bone, BoneChain chain)
+        private void DrawBoneGizmoRecursive(Transform bone, BoneChain chain, int depth)
         {
             if (bone == null || chain.excludedBones.Contains(bone)) return;
-            Gizmos.color = endPointColor;
-            Gizmos.DrawWireSphere(bone.position, chain.displayRadius);
-            if (chain.endBone != null && bone == chain.endBone) return;
+            float radius = chain.displayRadius * (chain.scaleGizmoByDepth ? Mathf.Pow(0.8f, depth) : 1f);
+            Gizmos.color = depth == 0 ? boneRootColor : endPointColor;
+            Gizmos.DrawWireSphere(bone.position, radius);
+            if (!chain.includeChildBones || (!chain.allBonesSway && depth + 1 >= Mathf.Max(1, chain.boneMotionLevels))) return;
             int limit = chain.includeAllBranches ? bone.childCount : Mathf.Min(1, bone.childCount);
             for (int i = 0; i < limit; i++)
             {
                 Transform child = bone.GetChild(i);
                 if (chain.excludedBones.Contains(child)) continue;
-                DrawCylinderWire(bone.position, child.position, chain.displayRadius);
-                DrawBoneGizmoRecursive(child, chain);
+                float childRadius = chain.displayRadius * (chain.scaleGizmoByDepth ? Mathf.Pow(0.8f, depth + 1) : 1f);
+                DrawCylinderWire(bone.position, child.position, Mathf.Min(radius, childRadius));
+                DrawBoneGizmoRecursive(child, chain, depth + 1);
             }
         }
 

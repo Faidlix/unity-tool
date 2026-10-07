@@ -7,6 +7,7 @@ namespace Faidlix.UnityTools.Editor
 {
     internal static class FDX_InspectorGUI
     {
+        private static int activeDistanceHandle = -1;
         private static GUIContent C(string chinese, string english) => new GUIContent(chinese, english);
 
         public static void DrawMotionSettings(SerializedProperty property)
@@ -95,8 +96,7 @@ namespace Faidlix.UnityTools.Editor
                 property.FindPropertyRelative("customFrameIntervals").vector3IntValue);
             Vector3 frequencyValues = ResolveFrequencyValues(quality.enumValueIndex,
                 property.FindPropertyRelative("customUpdateFrequencies").vector3Value);
-            DrawDistanceBar(mode.enumValueIndex, frameValues, frequencyValues,
-                first.floatValue, second.floatValue, third.floatValue);
+            DrawDistanceBar(mode.enumValueIndex, frameValues, frequencyValues, first, second, third);
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PrefixLabel(C("距離分界（公尺）", "Distance Thresholds In Meters"));
@@ -160,7 +160,7 @@ namespace Faidlix.UnityTools.Editor
         }
 
         private static void DrawDistanceBar(int mode, Vector3Int frames, Vector3 frequencies,
-            float first, float second, float third)
+            SerializedProperty first, SerializedProperty second, SerializedProperty third)
         {
             Rect rect = GUILayoutUtility.GetRect(10f, 58f, GUILayout.ExpandWidth(true));
             Color[] colors =
@@ -171,14 +171,50 @@ namespace Faidlix.UnityTools.Editor
             string[] labels = mode == (int)FDX_DistanceUpdateMode.FixedFrameInterval
                 ? new[] { $"每 {frames.x} 幀模擬", $"每 {frames.y} 幀模擬", $"每 {frames.z} 幀模擬", "停止模擬" }
                 : new[] { $"每秒 {frequencies.x:0} 次", $"每秒 {frequencies.y:0} 次", $"每秒 {frequencies.z:0} 次", "停止模擬" };
-            string[] distances = { $"0～{first:0.#} 公尺", $"{first:0.#}～{second:0.#} 公尺",
-                $"{second:0.#}～{third:0.#} 公尺", $"{third:0.#} 公尺以上" };
+            float maximum = Mathf.Max(50f, Mathf.Ceil((third.floatValue + 1f) / 10f) * 10f);
+            float[] values = { 0f, first.floatValue, second.floatValue, third.floatValue, maximum };
+            string[] distances = { $"0～{first.floatValue:0.#} 公尺", $"{first.floatValue:0.#}～{second.floatValue:0.#} 公尺",
+                $"{second.floatValue:0.#}～{third.floatValue:0.#} 公尺", $"{third.floatValue:0.#} 公尺以上" };
             for (int i = 0; i < 4; i++)
             {
-                Rect cell = new Rect(rect.x + rect.width * i / 4f, rect.y, rect.width / 4f - 1f, rect.height);
+                float xMin = rect.x + rect.width * values[i] / maximum;
+                float xMax = i == 3 ? rect.xMax : rect.x + rect.width * values[i + 1] / maximum;
+                Rect cell = new Rect(xMin, rect.y, Mathf.Max(1f, xMax - xMin - 1f), rect.height);
                 EditorGUI.DrawRect(cell, colors[i]);
                 GUI.Label(new Rect(cell.x + 6f, cell.y + 5f, cell.width - 10f, 20f), labels[i], EditorStyles.whiteLabel);
                 GUI.Label(new Rect(cell.x + 6f, cell.y + 29f, cell.width - 10f, 20f), distances[i], EditorStyles.whiteMiniLabel);
+            }
+
+            int controlId = GUIUtility.GetControlID("FDXDistanceBar".GetHashCode(), FocusType.Passive, rect);
+            Event current = Event.current;
+            SerializedProperty[] handles = { first, second, third };
+            for (int i = 0; i < handles.Length; i++)
+            {
+                float x = rect.x + rect.width * handles[i].floatValue / maximum;
+                Rect handleRect = new Rect(x - 5f, rect.y, 10f, rect.height);
+                EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
+                EditorGUI.DrawRect(new Rect(x - 1f, rect.y, 2f, rect.height), new Color(0.35f, 1f, 0.35f, 0.9f));
+                if (current.type == EventType.MouseDown && current.button == 0 && handleRect.Contains(current.mousePosition))
+                {
+                    GUIUtility.hotControl = controlId;
+                    activeDistanceHandle = i;
+                    current.Use();
+                }
+            }
+            if (GUIUtility.hotControl == controlId && current.type == EventType.MouseDrag && activeDistanceHandle >= 0)
+            {
+                float next = Mathf.Clamp01((current.mousePosition.x - rect.x) / rect.width) * maximum;
+                float minimum = activeDistanceHandle == 0 ? 0f : handles[activeDistanceHandle - 1].floatValue;
+                float upper = activeDistanceHandle == 2 ? maximum : handles[activeDistanceHandle + 1].floatValue;
+                handles[activeDistanceHandle].floatValue = Mathf.Clamp(next, minimum, upper);
+                GUI.changed = true;
+                current.Use();
+            }
+            if (GUIUtility.hotControl == controlId && current.type == EventType.MouseUp)
+            {
+                GUIUtility.hotControl = 0;
+                activeDistanceHandle = -1;
+                current.Use();
             }
         }
 
@@ -233,9 +269,12 @@ namespace Faidlix.UnityTools.Editor
         private SerializedProperty settingsMode;
         private SerializedProperty sharedMotionSettings;
         private SerializedProperty applySharedSettingsOnAttach;
+        private SerializedProperty sharedSimulate;
+        private SerializedProperty sharedForceSpace;
         private SerializedProperty previewInEditMode;
         private SerializedProperty attachmentsExpanded;
         private SerializedProperty detectedMotionsExpanded;
+        private SerializedProperty sharedSettingsExpanded;
 
         private void OnEnable()
         {
@@ -244,9 +283,12 @@ namespace Faidlix.UnityTools.Editor
             settingsMode = serializedObject.FindProperty("settingsMode");
             sharedMotionSettings = serializedObject.FindProperty("sharedMotionSettings");
             applySharedSettingsOnAttach = serializedObject.FindProperty("applySharedSettingsOnAttach");
+            sharedSimulate = serializedObject.FindProperty("sharedSimulate");
+            sharedForceSpace = serializedObject.FindProperty("sharedForceSpace");
             previewInEditMode = serializedObject.FindProperty("previewInEditMode");
             attachmentsExpanded = serializedObject.FindProperty("attachmentsExpanded");
             detectedMotionsExpanded = serializedObject.FindProperty("detectedMotionsExpanded");
+            sharedSettingsExpanded = serializedObject.FindProperty("sharedSettingsExpanded");
         }
 
         public override void OnInspectorGUI()
@@ -270,30 +312,6 @@ namespace Faidlix.UnityTools.Editor
 
             serializedObject.ApplyModifiedProperties();
             DrawDetectedMotions();
-            serializedObject.ApplyModifiedProperties();
-            serializedObject.Update();
-
-            EditorGUILayout.Space(8f);
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(new GUIContent("動態設定同步", "Motion Settings Sync"), EditorStyles.boldLabel);
-            bool syncEnabled = applySharedSettingsOnAttach.boolValue;
-            EditorGUI.BeginChangeCheck();
-            syncEnabled = EditorGUILayout.Toggle(syncEnabled, GUILayout.Width(20f));
-            if (EditorGUI.EndChangeCheck())
-            {
-                applySharedSettingsOnAttach.boolValue = syncEnabled;
-                settingsMode.enumValueIndex = syncEnabled
-                    ? (int)FDX_AttachmentManager.MotionSettingsMode.Unified
-                    : (int)FDX_AttachmentManager.MotionSettingsMode.PerAttachment;
-            }
-            EditorGUILayout.EndHorizontal();
-            if (syncEnabled)
-            {
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField(new GUIContent("統一動態設定", "Shared Motion Settings"), EditorStyles.boldLabel);
-                FDX_InspectorGUI.DrawMotionSettings(sharedMotionSettings);
-                EditorGUILayout.EndVertical();
-            }
             serializedObject.ApplyModifiedProperties();
         }
 
@@ -369,16 +387,52 @@ namespace Faidlix.UnityTools.Editor
             var manager = (FDX_AttachmentManager)target;
             EditorGUILayout.Space(8f);
             List<FDX_SecondaryMotion> motions = manager.FindAllMotionComponents();
+            EditorGUILayout.BeginHorizontal();
             detectedMotionsExpanded.boolValue = EditorGUILayout.Foldout(detectedMotionsExpanded.boolValue,
                 new GUIContent($"偵測到的動態元件（{motions.Count}）", "Detected Motion Components"), true);
-            if (!detectedMotionsExpanded.boolValue) return;
-            if (manager.SettingsMode == FDX_AttachmentManager.MotionSettingsMode.Unified &&
-                GUILayout.Button(new GUIContent("將統一設定套用到全部物件", "Apply Shared Settings To All")))
+            GUILayout.FlexibleSpace();
+            bool syncEnabled = applySharedSettingsOnAttach.boolValue;
+            using (new EditorGUI.DisabledScope(!syncEnabled))
             {
-                List<FDX_SecondaryMotion> all = manager.FindAllMotionComponents();
-                if (all.Count > 0) Undo.RecordObjects(all.ToArray(), "Apply FDX Motion Settings");
-                manager.ApplySharedSettingsToAll();
+                Rect syncFoldoutRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight, GUILayout.Width(112f));
+                sharedSettingsExpanded.boolValue = EditorGUI.Foldout(syncFoldoutRect, sharedSettingsExpanded.boolValue,
+                    new GUIContent("動態設定同步", "Motion Settings Sync"), true);
             }
+            EditorGUI.BeginChangeCheck();
+            syncEnabled = EditorGUILayout.Toggle(syncEnabled, GUILayout.Width(20f));
+            if (EditorGUI.EndChangeCheck())
+            {
+                applySharedSettingsOnAttach.boolValue = syncEnabled;
+                settingsMode.enumValueIndex = syncEnabled
+                    ? (int)FDX_AttachmentManager.MotionSettingsMode.Unified
+                    : (int)FDX_AttachmentManager.MotionSettingsMode.PerAttachment;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            if (syncEnabled && sharedSettingsExpanded.boolValue)
+            {
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.PropertyField(sharedSimulate, new GUIContent("動態模擬", "Apply simulation state to all detected components"));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    serializedObject.ApplyModifiedProperties();
+                    Undo.RecordObjects(motions.ToArray(), "Toggle All FDX Simulation");
+                    manager.SetAllSimulation(manager.SharedSimulate);
+                    serializedObject.Update();
+                }
+                DrawCompactExclusiveOptions(sharedForceSpace, "力場座標", "世界座標", "動作參考物件座標");
+                FDX_InspectorGUI.DrawMotionSettings(sharedMotionSettings);
+                if (GUILayout.Button(new GUIContent("將統一設定套用到全部物件", "Apply Shared Settings To All")))
+                {
+                    if (motions.Count > 0) Undo.RecordObjects(motions.ToArray(), "Apply FDX Motion Settings");
+                    serializedObject.ApplyModifiedProperties();
+                    manager.ApplySharedSettingsToAll();
+                    serializedObject.Update();
+                }
+                EditorGUILayout.EndVertical();
+            }
+            if (!detectedMotionsExpanded.boolValue) return;
 
             if (motions.Count == 0)
             {
@@ -390,9 +444,26 @@ namespace Faidlix.UnityTools.Editor
             {
                 if (motion == null) continue;
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.ObjectField(motion.name, motion, typeof(FDX_SecondaryMotion), true);
-                bool syncEnabled = manager.SharedSettingsEnabled;
+                syncEnabled = manager.SharedSettingsEnabled;
                 bool individual = manager.UsesIndividualSettings(motion);
+                bool showDetails = !syncEnabled || individual;
+                bool expanded = manager.IsMotionExpanded(motion);
+                EditorGUILayout.BeginHorizontal();
+                if (showDetails)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    Rect foldoutRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight, GUILayout.Width(16f));
+                    expanded = EditorGUI.Foldout(foldoutRect, expanded, GUIContent.none, true);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        Undo.RecordObject(manager, "Toggle FDX Motion Settings");
+                        manager.SetMotionExpanded(motion, expanded);
+                        EditorUtility.SetDirty(manager);
+                    }
+                }
+                EditorGUILayout.LabelField(motion.name, GUILayout.MinWidth(120f));
+                EditorGUILayout.ObjectField(motion, typeof(FDX_SecondaryMotion), true);
+                EditorGUILayout.EndHorizontal();
                 if (syncEnabled)
                 {
                     EditorGUI.BeginChangeCheck();
@@ -410,13 +481,33 @@ namespace Faidlix.UnityTools.Editor
                     EditorGUILayout.EndVertical();
                     continue;
                 }
-                int id = motion.GetInstanceID();
-                motionEditors.TryGetValue(id, out UnityEditor.Editor child);
-                CreateCachedEditor(motion, null, ref child);
-                motionEditors[id] = child;
-                child.OnInspectorGUI();
+                if (expanded) DrawMotionOnlySettings(motion);
                 EditorGUILayout.EndVertical();
             }
+        }
+
+        private static void DrawCompactExclusiveOptions(SerializedProperty property, string label,
+            string first, string second)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(120f));
+            bool firstSelected = property.enumValueIndex == 0;
+            if (EditorGUILayout.ToggleLeft(first, firstSelected, GUILayout.Width(105f)) && !firstSelected)
+                property.enumValueIndex = 0;
+            bool secondSelected = property.enumValueIndex == 1;
+            if (EditorGUILayout.ToggleLeft(second, secondSelected, GUILayout.Width(170f)) && !secondSelected)
+                property.enumValueIndex = 1;
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private static void DrawMotionOnlySettings(FDX_SecondaryMotion motion)
+        {
+            var motionObject = new SerializedObject(motion);
+            motionObject.Update();
+            EditorGUILayout.PropertyField(motionObject.FindProperty("simulate"), new GUIContent("動態模擬", "Dynamic Simulation"));
+            DrawCompactExclusiveOptions(motionObject.FindProperty("forceSpace"), "力場座標", "世界座標", "動作參考物件座標");
+            FDX_InspectorGUI.DrawMotionSettings(motionObject.FindProperty("settings"));
+            motionObject.ApplyModifiedProperties();
         }
 
         private void OnDisable()
@@ -436,6 +527,7 @@ namespace Faidlix.UnityTools.Editor
         private SerializedProperty simulate;
         private SerializedProperty forceSpace;
         private SerializedProperty settings;
+        private SerializedProperty motionSettingsExpanded;
         private SerializedProperty simulationAnchor;
         private SerializedProperty boneChains;
         private SerializedProperty existingBones;
@@ -454,6 +546,7 @@ namespace Faidlix.UnityTools.Editor
         private SerializedProperty pivotColor;
         private SerializedProperty endPointColor;
         private SerializedProperty mirrorColor;
+        private SerializedProperty boneRootColor;
         private SerializedProperty pivotGizmoRadius;
         private SerializedProperty endPointGizmoRadius;
         private Transform editingTip;
@@ -464,6 +557,7 @@ namespace Faidlix.UnityTools.Editor
             simulate = serializedObject.FindProperty("simulate");
             forceSpace = serializedObject.FindProperty("forceSpace");
             settings = serializedObject.FindProperty("settings");
+            motionSettingsExpanded = serializedObject.FindProperty("motionSettingsExpanded");
             simulationAnchor = serializedObject.FindProperty("simulationAnchor");
             boneChains = serializedObject.FindProperty("boneChains");
             existingBones = serializedObject.FindProperty("existingBones");
@@ -482,6 +576,7 @@ namespace Faidlix.UnityTools.Editor
             pivotColor = serializedObject.FindProperty("pivotColor");
             endPointColor = serializedObject.FindProperty("endPointColor");
             mirrorColor = serializedObject.FindProperty("mirrorColor");
+            boneRootColor = serializedObject.FindProperty("boneRootColor");
             pivotGizmoRadius = serializedObject.FindProperty("pivotGizmoRadius");
             endPointGizmoRadius = serializedObject.FindProperty("endPointGizmoRadius");
             SceneView.duringSceneGui += DuringSceneGUI;
@@ -614,30 +709,34 @@ namespace Faidlix.UnityTools.Editor
 
             EditorGUILayout.Space(4f);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField(new GUIContent("動態設定", "Motion Settings"), EditorStyles.boldLabel);
-            FDX_InspectorGUI.DrawMotionSettings(settings);
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button(new GUIContent("複製設定", "Copy Settings")))
+            motionSettingsExpanded.boolValue = EditorGUILayout.Foldout(motionSettingsExpanded.boolValue,
+                new GUIContent("動態設定", "Motion Settings"), true);
+            if (motionSettingsExpanded.boolValue)
             {
-                serializedObject.ApplyModifiedProperties();
-                copiedSettings = new FDX_MotionSettings();
-                copiedSettings.CopyFrom(((FDX_SecondaryMotion)target).Settings);
-                serializedObject.Update();
-            }
-            using (new EditorGUI.DisabledScope(copiedSettings == null))
-            {
-                if (GUILayout.Button(new GUIContent("貼上設定", "Paste Settings")))
+                FDX_InspectorGUI.DrawMotionSettings(settings);
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button(new GUIContent("複製設定", "Copy Settings")))
                 {
                     serializedObject.ApplyModifiedProperties();
-                    var motion = (FDX_SecondaryMotion)target;
-                    Undo.RecordObject(motion, "Paste FDX Motion Settings");
-                    motion.Settings.CopyFrom(copiedSettings);
-                    motion.RebuildSimulation();
-                    EditorUtility.SetDirty(motion);
+                    copiedSettings = new FDX_MotionSettings();
+                    copiedSettings.CopyFrom(((FDX_SecondaryMotion)target).Settings);
                     serializedObject.Update();
                 }
+                using (new EditorGUI.DisabledScope(copiedSettings == null))
+                {
+                    if (GUILayout.Button(new GUIContent("貼上設定", "Paste Settings")))
+                    {
+                        serializedObject.ApplyModifiedProperties();
+                        var motion = (FDX_SecondaryMotion)target;
+                        Undo.RecordObject(motion, "Paste FDX Motion Settings");
+                        motion.Settings.CopyFrom(copiedSettings);
+                        motion.RebuildSimulation();
+                        EditorUtility.SetDirty(motion);
+                        serializedObject.Update();
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
             }
-            EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(6f);
@@ -659,11 +758,12 @@ namespace Faidlix.UnityTools.Editor
             string[] labels, string[] tooltips)
         {
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.PrefixLabel(label);
+            GUILayout.Label(label, GUILayout.Width(120f));
             for (int i = 0; i < labels.Length; i++)
             {
                 bool selected = property.enumValueIndex == i;
-                bool next = EditorGUILayout.ToggleLeft(new GUIContent(labels[i], tooltips[i]), selected);
+                bool next = EditorGUILayout.ToggleLeft(new GUIContent(labels[i], tooltips[i]), selected,
+                    GUILayout.Width(i == 0 ? 145f : 175f));
                 if (next && !selected) property.enumValueIndex = i;
             }
             EditorGUILayout.EndHorizontal();
@@ -743,17 +843,25 @@ namespace Faidlix.UnityTools.Editor
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PropertyField(chain.FindPropertyRelative("enabled"), GUIContent.none, GUILayout.Width(18f));
+            SerializedProperty expanded = chain.FindPropertyRelative("expanded");
+            Rect chainFoldoutRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight, GUILayout.Width(16f));
+            expanded.boolValue = EditorGUI.Foldout(chainFoldoutRect, expanded.boolValue, GUIContent.none, true);
             EditorGUILayout.PropertyField(chain.FindPropertyRelative("displayName"), GUIContent.none);
             if (GUILayout.Button(new GUIContent("刪除", "Remove"), GUILayout.Width(50f)))
             {
                 string id = chain.FindPropertyRelative("editorId").stringValue;
+                serializedObject.ApplyModifiedProperties();
+                var motion = (FDX_SecondaryMotion)target;
+                Undo.RecordObject(motion, "Remove FDX Bone Chain");
                 RemoveChainFromGroups(id);
-                boneChains.DeleteArrayElementAtIndex(index);
+                motion.BoneChains.RemoveAt(index);
+                EditorUtility.SetDirty(motion);
                 EditorGUILayout.EndHorizontal();
                 EditorGUILayout.EndVertical();
                 GUIUtility.ExitGUI();
             }
             EditorGUILayout.EndHorizontal();
+            if (!expanded.boolValue) { EditorGUILayout.EndVertical(); return; }
             EditorGUI.BeginChangeCheck();
             EditorGUILayout.PropertyField(chain.FindPropertyRelative("root"), new GUIContent("骨架鏈起點", "Chain Root"));
             if (EditorGUI.EndChangeCheck())
@@ -774,12 +882,24 @@ namespace Faidlix.UnityTools.Editor
             if (chain.FindPropertyRelative("includeChildBones").boolValue)
             {
                 EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeAllBranches"), new GUIContent("包含全部分支", "Include All Branches"));
-                EditorGUILayout.PropertyField(chain.FindPropertyRelative("endBone"), new GUIContent("結束骨頭", "End Bone"));
-                EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeEndBone"), new GUIContent("模擬結束骨頭", "Include End Bone"));
+                SerializedProperty allBones = chain.FindPropertyRelative("allBonesSway");
+                EditorGUILayout.PropertyField(allBones, new GUIContent("全部骨頭晃動", "Animate All Bones"));
+                if (!allBones.boolValue)
+                {
+                    int maximum = FDX_SecondaryMotion.GetBoneChainDepth(((FDX_SecondaryMotion)target).BoneChains[index]);
+                    SerializedProperty levels = chain.FindPropertyRelative("boneMotionLevels");
+                    levels.intValue = EditorGUILayout.IntSlider(new GUIContent("骨頭晃動數量", "Animated Bone Levels"),
+                        Mathf.Clamp(levels.intValue, 1, maximum), 1, maximum);
+                }
             }
             DrawObjectList(chain.FindPropertyRelative("excludedBones"), "排除骨頭", typeof(Transform));
             EditorGUILayout.Slider(chain.FindPropertyRelative("influence"), 0f, 2f, new GUIContent("影響倍率", "Influence"));
-            EditorGUILayout.Slider(chain.FindPropertyRelative("displayRadius"), 0.001f, 1f, new GUIContent("顯示範圍", "Display Radius"));
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.Slider(chain.FindPropertyRelative("displayRadius"), 0.001f, 1f,
+                new GUIContent("骨架鏈起點大小", "Bone Chain Root Size"));
+            EditorGUILayout.PropertyField(chain.FindPropertyRelative("scaleGizmoByDepth"),
+                new GUIContent("逐節縮小", "Scale Each Bone By 0.8"), GUILayout.Width(88f));
+            EditorGUILayout.EndHorizontal();
             FDX_InspectorGUI.DrawAxisSettings(chain.FindPropertyRelative("axisSettings"));
             EditorGUILayout.EndVertical();
         }
@@ -847,11 +967,11 @@ namespace Faidlix.UnityTools.Editor
                 (chain, value) => chain.includeChildBones = value);
             DrawCommonBool("包含全部分支", indices, chain => chain.includeAllBranches,
                 (chain, value) => chain.includeAllBranches = value);
-            DrawCommonBool("模擬結束骨頭", indices, chain => chain.includeEndBone,
-                (chain, value) => chain.includeEndBone = value);
+            DrawCommonBool("全部骨頭晃動", indices, chain => chain.allBonesSway,
+                (chain, value) => chain.allBonesSway = value);
             DrawCommonFloat("影響倍率", indices, chain => chain.influence,
                 (chain, value) => chain.influence = value, 0f, 2f);
-            DrawCommonFloat("顯示範圍", indices, chain => chain.displayRadius,
+            DrawCommonFloat("骨架鏈起點大小", indices, chain => chain.displayRadius,
                 (chain, value) => chain.displayRadius = value, 0.001f, 1f);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PrefixLabel("啟用軸向");
@@ -1097,10 +1217,16 @@ namespace Faidlix.UnityTools.Editor
             if (group == null) return;
             var motion = (FDX_SecondaryMotion)target;
             List<int> indices = GetChainIndicesRecursive(groupId);
+            int addedCount = 0;
+            int skippedCount = 0;
+            int missingCount = 0;
             for (int i = indices.Count - 1; i >= 0; i--)
             {
                 int previousCount = motion.BoneChains.Count;
-                FindAndAddOppositeBone(indices[i]);
+                int result = FindAndAddOppositeBone(indices[i], false);
+                if (result > 0) addedCount++;
+                else if (result == 0) skippedCount++;
+                else missingCount++;
                 if (motion.BoneChains.Count > previousCount)
                 {
                     FDX_SecondaryMotion.BoneChain added = motion.BoneChains[motion.BoneChains.Count - 1];
@@ -1108,25 +1234,33 @@ namespace Faidlix.UnityTools.Editor
                 }
             }
             EditorUtility.SetDirty(motion);
+            EditorUtility.DisplayDialog("整組加入對側",
+                $"新增：{addedCount}\n略過：{skippedCount}\n找不到：{missingCount}", "確定");
         }
 
         private void DrawAutomaticPivot()
         {
             EditorGUILayout.Space(6f);
             var motion = (FDX_SecondaryMotion)target;
+            EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginChangeCheck();
             bool expanded = EditorGUILayout.Foldout(motion.PivotGroupsExpanded,
-                new GUIContent($"旋轉軸心組（{motion.PivotGroups.Count}）", "Rotation Pivot Groups"), true);
+                new GUIContent($"旋轉軸心（{motion.PivotGroups.Count}）", "Rotation Pivots"), true);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(motion, "Toggle FDX Pivot Groups");
                 motion.PivotGroupsExpanded = expanded;
                 EditorUtility.SetDirty(motion);
             }
+            if (GUILayout.Button(new GUIContent("新增旋轉軸心", "Add Rotation Pivot"), GUILayout.Width(112f)))
+            {
+                AddPivotGroup();
+                GUIUtility.ExitGUI();
+            }
+            EditorGUILayout.EndHorizontal();
             if (!expanded) return;
             for (int i = 0; i < pivotGroups.arraySize && i < motion.PivotGroups.Count; i++)
                 DrawPivotGroup(i, pivotGroups.GetArrayElementAtIndex(i), motion.PivotGroups[i]);
-            if (GUILayout.Button(new GUIContent("新增旋轉軸心組", "Add Rotation Pivot Group"))) AddPivotGroup();
 
             EditorGUILayout.Space(4f);
             EditorGUILayout.PropertyField(enablePreciseWeights, new GUIContent("啟用精細權重設定", "Precise Weight Editing"));
@@ -1139,12 +1273,25 @@ namespace Faidlix.UnityTools.Editor
 
         private void DrawPivotGroup(int index, SerializedProperty groupProperty, FDX_SecondaryMotion.PivotGroup group)
         {
+            var motion = (FDX_SecondaryMotion)target;
             SerializedProperty expanded = groupProperty.FindPropertyRelative("expanded");
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("enabled"), GUIContent.none, GUILayout.Width(18f));
-            expanded.boolValue = EditorGUILayout.Foldout(expanded.boolValue,
-                string.IsNullOrWhiteSpace(group.displayName) ? $"旋轉軸心 {index + 1}" : group.displayName, true);
+            Rect pivotFoldoutRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight, GUILayout.Width(16f));
+            expanded.boolValue = EditorGUI.Foldout(pivotFoldoutRect, expanded.boolValue, GUIContent.none, true);
+            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("displayName"), GUIContent.none, GUILayout.MinWidth(120f));
+            SerializedProperty replicationMode = groupProperty.FindPropertyRelative("replicationMode");
+            bool mirror = replicationMode.enumValueIndex == (int)FDX_SecondaryMotion.PivotReplicationMode.Mirror;
+            bool mirrorNext = EditorGUILayout.ToggleLeft(new GUIContent("啟用鏡射", "Enable Mirror"), mirror, GUILayout.Width(82f));
+            if (mirrorNext != mirror) replicationMode.enumValueIndex = mirrorNext
+                ? (int)FDX_SecondaryMotion.PivotReplicationMode.Mirror
+                : (int)FDX_SecondaryMotion.PivotReplicationMode.None;
+            bool radial = replicationMode.enumValueIndex == (int)FDX_SecondaryMotion.PivotReplicationMode.Radial;
+            bool radialNext = EditorGUILayout.ToggleLeft(new GUIContent("啟用環狀複製", "Enable Radial Copies"), radial, GUILayout.Width(110f));
+            if (radialNext != radial) replicationMode.enumValueIndex = radialNext
+                ? (int)FDX_SecondaryMotion.PivotReplicationMode.Radial
+                : (int)FDX_SecondaryMotion.PivotReplicationMode.None;
             if (GUILayout.Button("刪除", GUILayout.Width(45f)))
             {
                 RemovePivotGroup(index, group);
@@ -1155,16 +1302,39 @@ namespace Faidlix.UnityTools.Editor
             EditorGUILayout.EndHorizontal();
             if (!expanded.boolValue) { EditorGUILayout.EndVertical(); return; }
 
-            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("displayName"), new GUIContent("顯示名稱", "Display Name"));
+            if (replicationMode.enumValueIndex == (int)FDX_SecondaryMotion.PivotReplicationMode.Mirror)
+            {
+                EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("mirrorCenter"),
+                    new GUIContent("對稱中心", "Mirror Center; empty uses this component"));
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Label("對稱軸向", GUILayout.Width(120f));
+                EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("mirrorX"), new GUIContent("X"), GUILayout.Width(42f));
+                EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("mirrorY"), new GUIContent("Y"), GUILayout.Width(42f));
+                EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("mirrorZ"), new GUIContent("Z"), GUILayout.Width(42f));
+                EditorGUILayout.EndHorizontal();
+            }
+            else if (replicationMode.enumValueIndex == (int)FDX_SecondaryMotion.PivotReplicationMode.Radial)
+            {
+                EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("mirrorCenter"),
+                    new GUIContent("環狀中心", "Radial Center; empty uses this component"));
+                SerializedProperty radialAxis = groupProperty.FindPropertyRelative("radialAxis");
+                radialAxis.enumValueIndex = EditorGUILayout.Popup(new GUIContent("環狀旋轉軸", "Radial Axis"),
+                    radialAxis.enumValueIndex, new[] { "X 軸", "Y 軸", "Z 軸" });
+                SerializedProperty copies = groupProperty.FindPropertyRelative("radialCopies");
+                EditorGUILayout.IntSlider(copies, 1, 32, new GUIContent("環狀複製數量", "Additional Radial Copies"));
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.FloatField(new GUIContent("間隔角度", "Automatic Angle Spacing"), 360f / (copies.intValue + 1f));
+            }
+
             EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("solo"), new GUIContent("單獨預覽", "Solo"));
             EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("pivot"), new GUIContent("旋轉軸心", "Rotation Pivot"));
-            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("motionTarget"),
-                new GUIContent("擺動目標", "Motion Target; leave empty to use the pivot"));
             SerializedProperty automaticAnchor = groupProperty.FindPropertyRelative("automaticSimulationAnchor");
             EditorGUILayout.PropertyField(automaticAnchor, new GUIContent("自動取得動作參考物件", "Automatic Action Reference"));
             if (automaticAnchor.boolValue)
             {
-                Transform resolved = group.pivot != null && group.pivot.parent != null ? group.pivot.parent : group.pivot;
+                Transform resolved = motion.PivotGroups.Count > 1
+                    ? group.pivot != null ? group.pivot.parent : motion.transform
+                    : motion.transform.parent != null ? motion.transform.parent : motion.transform;
                 using (new EditorGUI.DisabledScope(true))
                     EditorGUILayout.ObjectField(new GUIContent("目前動作參考物件", "Resolved Action Reference"), resolved, typeof(Transform), true);
             }
@@ -1173,21 +1343,6 @@ namespace Faidlix.UnityTools.Editor
                 new GUIContent("軸心影響範圍", "Pivot Influence Radius"));
             FDX_InspectorGUI.DrawAxisSettings(groupProperty.FindPropertyRelative("axisSettings"));
 
-            SerializedProperty liveMirror = groupProperty.FindPropertyRelative("liveMirror");
-            EditorGUILayout.PropertyField(liveMirror, new GUIContent("建立對稱軸心", "Create Symmetric Pivot"));
-            if (liveMirror.boolValue)
-            {
-                string[] axes = { "X 軸", "Y 軸", "Z 軸" };
-                SerializedProperty mirrorAxis = groupProperty.FindPropertyRelative("mirrorAxis");
-                mirrorAxis.enumValueIndex = EditorGUILayout.Popup(new GUIContent("對稱軸向", "Mirror Axis"), mirrorAxis.enumValueIndex, axes);
-                EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("mirrorCenter"),
-                    new GUIContent("對稱中心", "Mirror Center; empty uses this component Transform"));
-                if (group.pivot != null && GUILayout.Button(new GUIContent("複製對稱軸心", "Duplicate Symmetric Pivot")))
-                {
-                    DuplicateMirroredPivot(index);
-                    GUIUtility.ExitGUI();
-                }
-            }
             if (group.pivot == null && GUILayout.Button(new GUIContent("建立旋轉軸心", "Create Rotation Pivot"))) CreatePivot(index);
             if (group.pivot != null)
             {
@@ -1221,6 +1376,12 @@ namespace Faidlix.UnityTools.Editor
                 DrawEndPointList(points, group.endPoints, group.pivot != null ? group.pivot : ((FDX_SecondaryMotion)target).transform, 0);
                 if (GUILayout.Button(new GUIContent("新增尾端控制點", "Add End Point"))) AddRootEndPoint(group);
                 EditorGUI.indentLevel--;
+            }
+            if (group.pivot != null && group.replicationMode != FDX_SecondaryMotion.PivotReplicationMode.None &&
+                GUILayout.Button(new GUIContent("複製軸心", "Create Independent Copies From The Current Pattern")))
+            {
+                DuplicateReplicatedPivots(index);
+                GUIUtility.ExitGUI();
             }
             EditorGUILayout.EndVertical();
         }
@@ -1296,17 +1457,33 @@ namespace Faidlix.UnityTools.Editor
 
         private void DrawGizmos()
         {
+            var motion = (FDX_SecondaryMotion)target;
             EditorGUILayout.Space(6f);
             EditorGUILayout.LabelField(new GUIContent("場景顯示", "Scene Gizmos"), EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(showGizmos, new GUIContent("顯示輔助圖形", "Show Gizmos"));
             if (!showGizmos.boolValue) return;
             EditorGUI.indentLevel++;
             EditorGUILayout.PropertyField(showAllInfluenceRanges, new GUIContent("顯示全部影響範圍", "Show All Influence Ranges"));
-            EditorGUILayout.PropertyField(pivotColor, new GUIContent("軸心顏色", "Pivot Color"));
-            EditorGUILayout.PropertyField(endPointColor, new GUIContent("控制點顏色", "End Point Color"));
-            EditorGUILayout.PropertyField(mirrorColor, new GUIContent("對稱預覽顏色", "Mirror Color"));
-            EditorGUILayout.Slider(pivotGizmoRadius, 0.001f, 1f, new GUIContent("軸心標記大小", "Pivot Gizmo Radius"));
-            EditorGUILayout.Slider(endPointGizmoRadius, 0.001f, 1f, new GUIContent("控制點標記大小", "End Point Gizmo Radius"));
+            if (motion.Source == FDX_SecondaryMotion.MotionSource.ExistingBones)
+            {
+                EditorGUILayout.PropertyField(boneRootColor, new GUIContent("骨架鏈起點顏色", "Bone Chain Root Color"));
+                EditorGUILayout.PropertyField(endPointColor, new GUIContent("骨架顏色", "Bone Color"));
+            }
+            else
+            {
+                bool hasAdvancedPoints = motion.PivotGroups.Exists(group => group != null &&
+                    group.enableAdvancedFlexible && group.endPoints != null && group.endPoints.Count > 0);
+                bool hasReplication = motion.PivotGroups.Exists(group => group != null &&
+                    group.replicationMode != FDX_SecondaryMotion.PivotReplicationMode.None);
+                EditorGUILayout.PropertyField(pivotColor, new GUIContent("軸心顏色", "Pivot Color"));
+                if (hasAdvancedPoints)
+                    EditorGUILayout.PropertyField(endPointColor, new GUIContent("控制點顏色", "End Point Color"));
+                if (hasReplication)
+                    EditorGUILayout.PropertyField(mirrorColor, new GUIContent("複製預覽顏色", "Replication Preview Color"));
+                EditorGUILayout.Slider(pivotGizmoRadius, 0.001f, 1f, new GUIContent("軸心標記大小", "Pivot Gizmo Radius"));
+                if (hasAdvancedPoints)
+                    EditorGUILayout.Slider(endPointGizmoRadius, 0.001f, 1f, new GUIContent("控制點標記大小", "End Point Gizmo Radius"));
+            }
             EditorGUI.indentLevel--;
         }
 
@@ -1375,45 +1552,92 @@ namespace Faidlix.UnityTools.Editor
             serializedObject.Update();
         }
 
-        private void DuplicateMirroredPivot(int index)
+        private void DuplicateReplicatedPivots(int index)
         {
             serializedObject.ApplyModifiedProperties();
             var motion = (FDX_SecondaryMotion)target;
             if (index < 0 || index >= motion.PivotGroups.Count) return;
             var source = motion.PivotGroups[index];
+            if (source == null || source.pivot == null) return;
             Transform center = source.mirrorCenter != null ? source.mirrorCenter : motion.transform;
-            var clone = new FDX_SecondaryMotion.PivotGroup
+            var positions = new List<Vector3>();
+            motion.GetReplicatedPivotPositions(source, positions);
+            if (positions.Count == 0) return;
+
+            Undo.RecordObject(motion, "Duplicate FDX Pivot Pattern");
+            Vector3 sourceOffset = source.pivot.position - center.position;
+            for (int copyIndex = 0; copyIndex < positions.Count; copyIndex++)
             {
-                displayName = SwapSideName(source.displayName),
-                enabled = source.enabled,
-                motionTarget = null,
-                automaticSimulationAnchor = source.automaticSimulationAnchor,
-                simulationAnchor = source.simulationAnchor,
-                influenceRadius = source.influenceRadius,
-                liveMirror = false,
-                mirrorAxis = source.mirrorAxis,
-                mirrorCenter = source.mirrorCenter,
-                enableAdvancedFlexible = source.enableAdvancedFlexible
-            };
-            clone.axisSettings.CopyFrom(source.axisSettings);
-            if (source.pivot != null)
-            {
-                var go = new GameObject(SwapSideName(source.pivot.name));
-                Undo.RegisterCreatedObjectUndo(go, "Create Mirrored FDX Pivot");
-                Undo.SetTransformParent(go.transform, source.pivot.parent, "Parent Mirrored FDX Pivot");
-                Vector3 localToCenter = center.InverseTransformPoint(source.pivot.position);
-                go.transform.position = center.TransformPoint(FDX_SecondaryMotion.MirrorLocalPoint(localToCenter, source.mirrorAxis));
-                go.transform.rotation = center.rotation * MirrorRotation(center.rotation, source.pivot.rotation, source.mirrorAxis);
+                string suffix = source.replicationMode == FDX_SecondaryMotion.PivotReplicationMode.Mirror
+                    ? $"_Mirror_{copyIndex + 1}"
+                    : $"_Radial_{copyIndex + 1}";
+                var clone = new FDX_SecondaryMotion.PivotGroup
+                {
+                    dataVersion = 1,
+                    displayName = source.displayName + suffix,
+                    enabled = source.enabled,
+                    expanded = source.expanded,
+                    solo = false,
+                    motionTarget = null,
+                    automaticSimulationAnchor = source.automaticSimulationAnchor,
+                    simulationAnchor = source.simulationAnchor,
+                    influenceRadius = source.influenceRadius,
+                    replicationMode = FDX_SecondaryMotion.PivotReplicationMode.None,
+                    mirrorCenter = source.mirrorCenter,
+                    enableAdvancedFlexible = source.enableAdvancedFlexible
+                };
+                clone.axisSettings.CopyFrom(source.axisSettings);
+
+                var go = new GameObject(source.pivot.name + suffix);
+                Undo.RegisterCreatedObjectUndo(go, "Create Replicated FDX Pivot");
+                Undo.SetTransformParent(go.transform, source.pivot.parent, "Parent Replicated FDX Pivot");
+                go.transform.position = positions[copyIndex];
+                Vector3 destinationOffset = positions[copyIndex] - center.position;
+                Quaternion offsetRotation = sourceOffset.sqrMagnitude > 0.000001f && destinationOffset.sqrMagnitude > 0.000001f
+                    ? Quaternion.FromToRotation(sourceOffset, destinationOffset)
+                    : Quaternion.identity;
+                go.transform.rotation = offsetRotation * source.pivot.rotation;
                 go.transform.localScale = source.pivot.localScale;
                 clone.pivot = go.transform;
+
+                foreach (FDX_SecondaryMotion.FlexibleEndPoint point in source.endPoints)
+                    clone.endPoints.Add(CloneEndPointRelative(point, go.transform));
+                motion.PivotGroups.Add(clone);
             }
-            Transform pointParent = clone.pivot != null ? clone.pivot : motion.transform;
-            foreach (FDX_SecondaryMotion.FlexibleEndPoint point in source.endPoints)
-                clone.endPoints.Add(CloneMirrored(point, pointParent, source.mirrorAxis));
-            Undo.RecordObject(motion, "Duplicate Mirrored FDX Pivot Group");
-            motion.PivotGroups.Add(clone);
             EditorUtility.SetDirty(motion);
             serializedObject.Update();
+        }
+
+        private static FDX_SecondaryMotion.FlexibleEndPoint CloneEndPointRelative(
+            FDX_SecondaryMotion.FlexibleEndPoint source, Transform destinationParent)
+        {
+            var clone = new FDX_SecondaryMotion.FlexibleEndPoint
+            {
+                displayName = source.displayName,
+                detectionRadius = source.detectionRadius,
+                motionMultiplier = source.motionMultiplier,
+                generatedSegments = source.generatedSegments,
+                weightFalloff = source.weightFalloff != null
+                    ? new AnimationCurve(source.weightFalloff.keys)
+                    : AnimationCurve.Linear(0f, 0f, 1f, 1f),
+                liveMirror = false,
+                mirrorAxis = source.mirrorAxis
+            };
+            clone.axisSettings.CopyFrom(source.axisSettings);
+            if (source.tip != null)
+            {
+                var go = new GameObject(source.tip.name);
+                Undo.RegisterCreatedObjectUndo(go, "Create Replicated FDX End Point");
+                Undo.SetTransformParent(go.transform, destinationParent, "Parent Replicated FDX End Point");
+                go.transform.localPosition = source.tip.localPosition;
+                go.transform.localRotation = source.tip.localRotation;
+                go.transform.localScale = source.tip.localScale;
+                clone.tip = go.transform;
+            }
+            Transform nextParent = clone.tip != null ? clone.tip : destinationParent;
+            foreach (FDX_SecondaryMotion.FlexibleEndPoint child in source.children)
+                clone.children.Add(CloneEndPointRelative(child, nextParent));
+            return clone;
         }
 
         private static Quaternion MirrorRotation(Quaternion centerRotation, Quaternion sourceRotation,
@@ -1516,28 +1740,28 @@ namespace Faidlix.UnityTools.Editor
             return name + "_Mirrored";
         }
 
-        private void FindAndAddOppositeBone(int chainIndex)
+        private int FindAndAddOppositeBone(int chainIndex, bool showFailure = true)
         {
             var motion = (FDX_SecondaryMotion)target;
-            if (chainIndex < 0 || chainIndex >= motion.BoneChains.Count) return;
+            if (chainIndex < 0 || chainIndex >= motion.BoneChains.Count) return -1;
             FDX_SecondaryMotion.BoneChain source = motion.BoneChains[chainIndex];
-            if (source == null || source.root == null) return;
+            if (source == null || source.root == null) return -1;
             string oppositeName = SwapSideName(source.root.name);
             if (oppositeName.EndsWith("_Mirrored", StringComparison.Ordinal))
             {
-                EditorUtility.DisplayDialog("FDX", "無法從名稱判斷左右側。", "確定");
-                return;
+                if (showFailure) EditorUtility.DisplayDialog("FDX", "無法從名稱判斷左右側。", "確定");
+                return -1;
             }
 
             Transform searchRoot = motion.SimulationAnchor != null ? motion.SimulationAnchor : motion.transform.root;
             Transform opposite = FindUniqueTransform(searchRoot, oppositeName);
             if (opposite == null)
             {
-                EditorUtility.DisplayDialog("FDX", $"找不到唯一的對側骨架：{oppositeName}", "確定");
-                return;
+                if (showFailure) EditorUtility.DisplayDialog("FDX", $"找不到唯一的對側骨架：{oppositeName}", "確定");
+                return -1;
             }
             foreach (FDX_SecondaryMotion.BoneChain existing in motion.BoneChains)
-                if (existing != null && existing.root == opposite) return;
+                if (existing != null && existing.root == opposite) return 0;
 
             Undo.RecordObject(motion, "Add Opposite FDX Bone Chain");
             var clone = new FDX_SecondaryMotion.BoneChain
@@ -1548,13 +1772,18 @@ namespace Faidlix.UnityTools.Editor
                 root = opposite,
                 includeChildBones = source.includeChildBones,
                 includeAllBranches = source.includeAllBranches,
-                includeEndBone = source.includeEndBone,
+                allBonesSway = source.allBonesSway,
+                boneMotionLevels = source.boneMotionLevels,
                 influence = source.influence,
-                displayRadius = source.displayRadius
+                displayRadius = source.displayRadius,
+                scaleGizmoByDepth = source.scaleGizmoByDepth,
+                expanded = source.expanded,
+                dataVersion = 1
             };
             clone.axisSettings.CopyFrom(source.axisSettings);
             motion.BoneChains.Add(clone);
             EditorUtility.SetDirty(motion);
+            return 1;
         }
 
         private static Transform FindUniqueTransform(Transform root, string name)

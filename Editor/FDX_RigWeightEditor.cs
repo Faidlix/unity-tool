@@ -148,6 +148,10 @@ namespace Faidlix.UnityTools.Editor
                     includeEndBone = true
                 };
                 chainMotion.BoneChains.Add(chain);
+                if (FDX_SecondaryMotion.GetBoneChainDepth(chain) != 2)
+                    throw new InvalidOperationException("Bone-chain depth detection did not include the root and child.");
+                chain.allBonesSway = false;
+                chain.boneMotionLevels = 1;
                 chainMotion.RebuildSimulation();
                 if (!chainMotion.HasValidExistingBones || chainMotion.ValidateSetup().Count != 0)
                     throw new InvalidOperationException("Existing bone-chain validation failed.");
@@ -156,6 +160,23 @@ namespace Faidlix.UnityTools.Editor
                 if (Quaternion.Angle(chainStart, skirtRoot.transform.localRotation) < 0.001f)
                     throw new InvalidOperationException("Existing bone chain did not simulate.");
                 chainMotion.StopPreview();
+
+                manager.SetAllSimulation(false);
+                if (testMotion.Simulate || chainMotion.Simulate)
+                    throw new InvalidOperationException("Attachment Manager did not disable every detected motion component.");
+                manager.SetAllSimulation(true);
+                if (!testMotion.Simulate || !chainMotion.Simulate)
+                    throw new InvalidOperationException("Attachment Manager did not enable every detected motion component.");
+
+                FDX_SecondaryMotion.PivotGroup replicated = testMotion.PivotGroups[0];
+                replicated.replicationMode = FDX_SecondaryMotion.PivotReplicationMode.Mirror;
+                replicated.mirrorX = true;
+                replicated.mirrorY = true;
+                replicated.mirrorZ = false;
+                var replicatedPositions = new List<Vector3>();
+                testMotion.GetReplicatedPivotPositions(replicated, replicatedPositions);
+                if (replicatedPositions.Count != 3)
+                    throw new InvalidOperationException("Two-axis pivot mirroring did not create three additional positions.");
                 chain.axisSettings.lockX = chain.axisSettings.lockY = chain.axisSettings.lockZ = true;
                 chainMotion.RebuildSimulation();
                 chainStart = skirtRoot.transform.localRotation;
@@ -195,7 +216,7 @@ namespace Faidlix.UnityTools.Editor
             if (Application.isBatchMode) EditorApplication.Exit(0);
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.3.0")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.4.0")]
         public static void RunBatchExportPackage()
         {
             try
@@ -206,7 +227,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.3.0.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.4.0.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,

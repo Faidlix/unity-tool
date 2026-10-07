@@ -56,6 +56,7 @@ namespace Faidlix.UnityTools
         {
             public FDX_SecondaryMotion motion;
             public bool useIndividualSettings;
+            public bool expanded;
         }
 
         [Header("角色")]
@@ -68,11 +69,14 @@ namespace Faidlix.UnityTools
         [SerializeField] private MotionSettingsMode settingsMode = MotionSettingsMode.Unified;
         [SerializeField] private FDX_MotionSettings sharedMotionSettings = new FDX_MotionSettings();
         [SerializeField] private bool applySharedSettingsOnAttach = true;
+        [SerializeField] private bool sharedSimulate = true;
+        [SerializeField] private FDX_SecondaryMotion.ForceSpace sharedForceSpace = FDX_SecondaryMotion.ForceSpace.World;
         [SerializeField] private List<MotionOverride> motionOverrides = new List<MotionOverride>();
 
         [HideInInspector, SerializeField] private bool previewInEditMode;
         [HideInInspector, SerializeField] private bool attachmentsExpanded = true;
         [HideInInspector, SerializeField] private bool detectedMotionsExpanded = true;
+        [HideInInspector, SerializeField] private bool sharedSettingsExpanded = true;
 
         private readonly List<GameObject> ownedRuntimeInstances = new List<GameObject>();
 
@@ -80,6 +84,8 @@ namespace Faidlix.UnityTools
         public IReadOnlyList<AttachmentSlot> Attachments => attachments;
         public MotionSettingsMode SettingsMode => settingsMode;
         public FDX_MotionSettings SharedMotionSettings => sharedMotionSettings;
+        public bool SharedSimulate { get => sharedSimulate; set => sharedSimulate = value; }
+        public FDX_SecondaryMotion.ForceSpace SharedForceSpace { get => sharedForceSpace; set => sharedForceSpace = value; }
         public bool SharedSettingsEnabled
         {
             get => applySharedSettingsOnAttach && settingsMode == MotionSettingsMode.Unified;
@@ -91,6 +97,7 @@ namespace Faidlix.UnityTools
         }
         public bool AttachmentsExpanded { get => attachmentsExpanded; set => attachmentsExpanded = value; }
         public bool DetectedMotionsExpanded { get => detectedMotionsExpanded; set => detectedMotionsExpanded = value; }
+        public bool SharedSettingsExpanded { get => sharedSettingsExpanded; set => sharedSettingsExpanded = value; }
         public bool PreviewInEditMode
         {
             get => previewInEditMode;
@@ -302,7 +309,11 @@ namespace Faidlix.UnityTools
 
             foreach (FDX_SecondaryMotion motion in FindAllMotionComponents())
                 if (motion != null && !individualMotions.Contains(motion))
+                {
+                    motion.Simulate = sharedSimulate;
+                    motion.Forces = sharedForceSpace;
                     motion.ApplySettings(sharedMotionSettings, true);
+                }
         }
 
         public bool UsesIndividualSettings(FDX_SecondaryMotion motion)
@@ -328,6 +339,33 @@ namespace Faidlix.UnityTools
                 return;
             }
             motionOverrides.Add(new MotionOverride { motion = motion, useIndividualSettings = value });
+        }
+
+        public bool IsMotionExpanded(FDX_SecondaryMotion motion)
+        {
+            if (motion == null) return false;
+            foreach (MotionOverride entry in motionOverrides)
+                if (entry != null && entry.motion == motion) return entry.expanded;
+            return false;
+        }
+
+        public void SetMotionExpanded(FDX_SecondaryMotion motion, bool value)
+        {
+            if (motion == null) return;
+            foreach (MotionOverride entry in motionOverrides)
+            {
+                if (entry == null || entry.motion != motion) continue;
+                entry.expanded = value;
+                return;
+            }
+            motionOverrides.Add(new MotionOverride { motion = motion, expanded = value });
+        }
+
+        public void SetAllSimulation(bool value)
+        {
+            sharedSimulate = value;
+            foreach (FDX_SecondaryMotion motion in FindAllMotionComponents())
+                if (motion != null) motion.Simulate = value;
         }
 
         public void PreviewStep(float deltaTime)
@@ -368,10 +406,15 @@ namespace Faidlix.UnityTools
             return instance;
         }
 
-        private static void ApplySettings(GameObject root, FDX_MotionSettings settings)
+        private void ApplySettings(GameObject root, FDX_MotionSettings settings)
         {
             FDX_SecondaryMotion[] motions = root.GetComponentsInChildren<FDX_SecondaryMotion>(true);
-            foreach (FDX_SecondaryMotion motion in motions) motion.ApplySettings(settings, true);
+            foreach (FDX_SecondaryMotion motion in motions)
+            {
+                motion.Simulate = sharedSimulate;
+                motion.Forces = sharedForceSpace;
+                motion.ApplySettings(settings, true);
+            }
         }
     }
 
