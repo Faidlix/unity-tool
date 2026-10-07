@@ -88,6 +88,17 @@ namespace Faidlix.UnityTools.Editor
                 });
                 testMotion.EndPoints.Add(rootPoint);
 
+                var secondPivotObject = new GameObject("FDX_Smoke_RightPivot");
+                secondPivotObject.transform.SetParent(root.transform, false);
+                secondPivotObject.transform.localPosition = Vector3.right * 0.3f;
+                testMotion.PivotGroups.Add(new FDX_SecondaryMotion.PivotGroup
+                {
+                    displayName = "Right Pivot",
+                    pivot = secondPivotObject.transform,
+                    motionTarget = secondPivotObject.transform,
+                    automaticSimulationAnchor = true
+                });
+
                 window = CreateInstance<FDX_RigWeightEditor>();
                 window.motion = testMotion;
                 window.GenerateAutomaticRigAndWeights();
@@ -154,9 +165,12 @@ namespace Faidlix.UnityTools.Editor
                 chainMotion.StopPreview();
 
                 Quaternion previewStart = root.transform.localRotation;
+                Quaternion secondPreviewStart = secondPivotObject.transform.localRotation;
                 for (int i = 0; i < 30; i++) manager.PreviewStep(1f / 60f);
                 if (Quaternion.Angle(previewStart, root.transform.localRotation) < 0.001f)
                     throw new InvalidOperationException("Edit Mode Preview did not rotate the automatic motion target.");
+                if (Quaternion.Angle(secondPreviewStart, secondPivotObject.transform.localRotation) < 0.001f)
+                    throw new InvalidOperationException("Multi-pivot preview did not rotate the second motion target.");
                 manager.StopPreview();
 
                 Debug.Log($"FDX_ATTACHMENT_MOTION_SMOKE_OK bones={result.bones.Length} vertices={result.sharedMesh.vertexCount} chains=1");
@@ -181,7 +195,7 @@ namespace Faidlix.UnityTools.Editor
             if (Application.isBatchMode) EditorApplication.Exit(0);
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.1.0")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.2.0")]
         public static void RunBatchExportPackage()
         {
             try
@@ -192,7 +206,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.1.0.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.2.0.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,
@@ -373,20 +387,24 @@ namespace Faidlix.UnityTools.Editor
                 return;
             }
 
-            Transform pivot = motion.RotationPivot;
-            var bones = new List<Transform> { pivot };
+            Transform pivot = motion.RotationPivot != null ? motion.RotationPivot : motion.transform;
+            var bones = new List<Transform> { motion.transform };
             var rigSegments = new List<AutoRigSegment>();
 
             Undo.RecordObject(motion, "Generate FDX Rig");
-            foreach (FDX_SecondaryMotion.FlexibleEndPoint point in motion.EndPoints)
-                ClearGeneratedBones(point);
-            foreach (FDX_SecondaryMotion.FlexibleEndPoint point in motion.EndPoints)
+            foreach (FDX_SecondaryMotion.PivotGroup group in motion.PivotGroups)
             {
-                BuildAutomaticRigBranch(point, pivot, pivot, pivot.position, pivot.rotation, false,
-                    point.mirrorAxis, true, bones, rigSegments);
+                if (group == null || !group.enabled) continue;
+                Transform groupPivot = group.pivot != null ? group.pivot : pivot;
+                if (!bones.Contains(groupPivot)) bones.Add(groupPivot);
+                foreach (FDX_SecondaryMotion.FlexibleEndPoint point in group.endPoints)
+                    ClearGeneratedBones(point);
+                foreach (FDX_SecondaryMotion.FlexibleEndPoint point in group.endPoints)
+                    BuildAutomaticRigBranch(point, groupPivot, groupPivot, groupPivot.position, groupPivot.rotation, false,
+                        point.mirrorAxis, true, bones, rigSegments);
             }
 
-            if (bones.Count == 1)
+            if (rigSegments.Count == 0)
             {
                 EditorUtility.DisplayDialog("FDX", "沒有有效的尾端控制點。", "確定");
                 DestroyImmediate(generatedMesh);
@@ -408,7 +426,7 @@ namespace Faidlix.UnityTools.Editor
             Undo.RecordObject(skinned, "Assign FDX Skinned Mesh");
             skinned.sharedMesh = generatedMesh;
             skinned.sharedMaterials = materials;
-            skinned.rootBone = pivot;
+            skinned.rootBone = motion.transform;
             skinned.bones = bones.ToArray();
             skinned.updateWhenOffscreen = true;
             if (oldRenderer != null && oldRenderer != skinned)

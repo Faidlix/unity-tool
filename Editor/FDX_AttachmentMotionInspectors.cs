@@ -7,83 +7,94 @@ namespace Faidlix.UnityTools.Editor
 {
     internal static class FDX_InspectorGUI
     {
+        private static GUIContent C(string chinese, string english) => new GUIContent(chinese, english);
+
         public static void DrawMotionSettings(SerializedProperty property)
         {
             SerializedProperty perAxis = property.FindPropertyRelative("perAxisSettings");
-            EditorGUILayout.PropertyField(perAxis, new GUIContent("各軸獨立設定（Per-Axis Settings）"));
+            EditorGUILayout.PropertyField(perAxis, C("各軸獨立設定", "Per-Axis Settings"));
             if (perAxis.boolValue)
             {
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertiaPerAxis"), new GUIContent("慣性 XYZ（Inertia）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("springPerAxis"), new GUIContent("彈力 XYZ（Spring）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("dampingPerAxis"), new GUIContent("阻尼 XYZ（Damping）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("maxAnglePerAxis"), new GUIContent("最大角度 XYZ（Max Angle）"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertiaPerAxis"), C("慣性 XYZ", "Inertia"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("springPerAxis"), C("彈力 XYZ", "Spring"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("dampingPerAxis"), C("阻尼 XYZ", "Damping"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("maxAnglePerAxis"), C("最大角度 XYZ", "Max Angle"));
             }
             else
             {
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertia"), new GUIContent("慣性（Inertia）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("spring"), new GUIContent("彈力（Spring）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("damping"), new GUIContent("阻尼（Damping）"));
-                EditorGUILayout.Slider(property.FindPropertyRelative("maxAngle"), 0f, 180f, new GUIContent("最大角度（Max Angle）"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertia"), C("慣性", "Inertia"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("spring"), C("彈力", "Spring"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("damping"), C("阻尼", "Damping"));
+                EditorGUILayout.Slider(property.FindPropertyRelative("maxAngle"), 0f, 180f, C("最大角度", "Max Angle"));
             }
 
             EditorGUILayout.Slider(property.FindPropertyRelative("animationBlend"), 0f, 1f,
-                new GUIContent("動畫混合（Animation Blend）"));
+                C("動畫混合", "Animation Blend"));
             EditorGUILayout.IntSlider(property.FindPropertyRelative("substeps"), 1, 4,
-                new GUIContent("模擬子步進（Substeps）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityStrength"), new GUIContent("重力強度（Gravity Strength）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityDirection"), new GUIContent("重力方向（Gravity Direction）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("constantWind"), new GUIContent("固定風力（Constant Wind）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("windMultiplier"), new GUIContent("風力倍率（Wind Multiplier）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("teleportDistance"), new GUIContent("瞬移判定距離（Teleport Distance）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("maxDeltaTime"), new GUIContent("最大更新間隔（Max Delta Time）"));
+                C("模擬子步進", "Substeps"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityStrength"), C("重力強度", "Gravity Strength"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityDirection"), C("重力方向", "Gravity Direction"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("constantWind"), C("固定風力", "Constant Wind"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("windMultiplier"), C("風力倍率", "Wind Multiplier"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("teleportDistance"), C("瞬移判定距離", "Teleport Distance"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("maxDeltaTime"), C("最大更新間隔", "Max Delta Time"));
 
             EditorGUILayout.Space(4f);
-            EditorGUILayout.LabelField("碰撞（Collision）", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(C("碰撞", "Collision"), EditorStyles.boldLabel);
             SerializedProperty enableCollision = property.FindPropertyRelative("enableCollision");
-            EditorGUILayout.PropertyField(enableCollision, new GUIContent("啟用碰撞（Enable Collision）"));
+            EditorGUILayout.PropertyField(enableCollision, C("啟用碰撞", "Enable Collision"));
             if (enableCollision.boolValue)
             {
                 EditorGUI.indentLevel++;
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionLayers"), new GUIContent("碰撞圖層（Collision Layers）"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionLayers"), C("碰撞圖層", "Collision Layers"));
                 EditorGUILayout.Slider(property.FindPropertyRelative("collisionRadius"), 0.001f, 2f,
-                    new GUIContent("碰撞半徑（Collision Radius）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionStrength"), new GUIContent("碰撞強度（Collision Strength）"));
+                    C("碰撞半徑", "Collision Radius"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionStrength"), C("碰撞強度", "Collision Strength"));
                 EditorGUILayout.Slider(property.FindPropertyRelative("collisionFriction"), 0f, 1f,
-                    new GUIContent("碰撞摩擦力（Collision Friction）"));
+                    C("碰撞摩擦力", "Collision Friction"));
                 EditorGUI.indentLevel--;
             }
         }
 
         public static void DrawAxisSettings(SerializedProperty property)
         {
-            EditorGUILayout.LabelField("軸向限制（Axis Constraints）", EditorStyles.miniBoldLabel);
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("lockX"), new GUIContent("鎖 X（Lock X）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("lockY"), new GUIContent("鎖 Y（Lock Y）"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("lockZ"), new GUIContent("鎖 Z（Lock Z）"));
+            EditorGUILayout.PrefixLabel(C("啟用軸向", "Enabled Axes"));
+            DrawEnabledAxis(property.FindPropertyRelative("lockX"), "X");
+            DrawEnabledAxis(property.FindPropertyRelative("lockY"), "Y");
+            DrawEnabledAxis(property.FindPropertyRelative("lockZ"), "Z");
+            GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
             SerializedProperty individual = property.FindPropertyRelative("useIndividualDynamics");
-            EditorGUILayout.PropertyField(individual, new GUIContent("使用個別動態設定（Individual Dynamics）"));
+            EditorGUILayout.PropertyField(individual, C("使用個別動態設定", "Individual Dynamics"));
             if (!individual.boolValue) return;
             EditorGUI.indentLevel++;
             SerializedProperty perAxis = property.FindPropertyRelative("perAxisSettings");
-            EditorGUILayout.PropertyField(perAxis, new GUIContent("各軸獨立設定（Per-Axis Settings）"));
+            EditorGUILayout.PropertyField(perAxis, C("各軸獨立設定", "Per-Axis Settings"));
             if (perAxis.boolValue)
             {
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertiaPerAxis"), new GUIContent("慣性 XYZ（Inertia）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("springPerAxis"), new GUIContent("彈力 XYZ（Spring）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("dampingPerAxis"), new GUIContent("阻尼 XYZ（Damping）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("maxAnglePerAxis"), new GUIContent("最大角度 XYZ（Max Angle）"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertiaPerAxis"), C("慣性 XYZ", "Inertia"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("springPerAxis"), C("彈力 XYZ", "Spring"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("dampingPerAxis"), C("阻尼 XYZ", "Damping"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("maxAnglePerAxis"), C("最大角度 XYZ", "Max Angle"));
             }
             else
             {
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertia"), new GUIContent("慣性（Inertia）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("spring"), new GUIContent("彈力（Spring）"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("damping"), new GUIContent("阻尼（Damping）"));
-                EditorGUILayout.Slider(property.FindPropertyRelative("maxAngle"), 0f, 180f, new GUIContent("最大角度（Max Angle）"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertia"), C("慣性", "Inertia"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("spring"), C("彈力", "Spring"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("damping"), C("阻尼", "Damping"));
+                EditorGUILayout.Slider(property.FindPropertyRelative("maxAngle"), 0f, 180f, C("最大角度", "Max Angle"));
             }
             EditorGUI.indentLevel--;
+        }
+
+        private static void DrawEnabledAxis(SerializedProperty lockProperty, string axis)
+        {
+            bool enabled = !lockProperty.boolValue;
+            EditorGUI.BeginChangeCheck();
+            enabled = EditorGUILayout.ToggleLeft(new GUIContent(axis, "Enable " + axis + " Axis"), enabled, GUILayout.Width(36f));
+            if (EditorGUI.EndChangeCheck()) lockProperty.boolValue = !enabled;
         }
     }
 
@@ -111,8 +122,8 @@ namespace Faidlix.UnityTools.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            EditorGUILayout.PropertyField(animator, new GUIContent("角色 Animator（Character Animator）"));
-            if (GUILayout.Button("重新綁定與建立（Rebind & Rebuild）"))
+            EditorGUILayout.PropertyField(animator, new GUIContent("角色動畫控制器", "Character Animator"));
+            if (GUILayout.Button(new GUIContent("重新綁定與建立", "Rebind & Rebuild")))
             {
                 serializedObject.ApplyModifiedProperties();
                 var manager = (FDX_AttachmentManager)target;
@@ -121,19 +132,19 @@ namespace Faidlix.UnityTools.Editor
                 EditorUtility.SetDirty(manager);
                 serializedObject.Update();
             }
-            EditorGUILayout.PropertyField(previewInEditMode, new GUIContent("編輯模式預覽（Edit Mode Preview）"));
+            EditorGUILayout.PropertyField(previewInEditMode, new GUIContent("編輯模式預覽", "Edit Mode Preview"));
             DrawAttachments();
 
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("動態設定同步（Motion Settings Sync）", EditorStyles.boldLabel);
-            string[] modeNames = { "全員統一（Unified）", "各掛載物件（Per Attachment）" };
-            settingsMode.enumValueIndex = EditorGUILayout.Popup("設定模式（Settings Mode）", settingsMode.enumValueIndex, modeNames);
+            EditorGUILayout.LabelField(new GUIContent("動態設定同步", "Motion Settings Sync"), EditorStyles.boldLabel);
+            string[] modeNames = { "全員統一", "各掛載物件" };
+            settingsMode.enumValueIndex = EditorGUILayout.Popup(new GUIContent("設定模式", "Settings Mode"), settingsMode.enumValueIndex, modeNames);
             EditorGUILayout.PropertyField(applySharedSettingsOnAttach,
-                new GUIContent("掛載時套用統一設定（Apply Shared Settings On Attach）"));
+                new GUIContent("掛載時套用統一設定", "Apply Shared Settings On Attach"));
             if (settingsMode.enumValueIndex == (int)FDX_AttachmentManager.MotionSettingsMode.Unified)
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("統一動態設定（Shared Motion Settings）", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(new GUIContent("統一動態設定", "Shared Motion Settings"), EditorStyles.boldLabel);
                 FDX_InspectorGUI.DrawMotionSettings(sharedMotionSettings);
                 EditorGUILayout.EndVertical();
             }
@@ -145,7 +156,7 @@ namespace Faidlix.UnityTools.Editor
         private void DrawAttachments()
         {
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField($"掛載清單（Attachments）  {attachments.arraySize}", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(new GUIContent($"掛載清單  {attachments.arraySize}", "Attachments"), EditorStyles.boldLabel);
             for (int i = 0; i < attachments.arraySize; i++)
             {
                 SerializedProperty slot = attachments.GetArrayElementAtIndex(i);
@@ -154,7 +165,7 @@ namespace Faidlix.UnityTools.Editor
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.PropertyField(slot.FindPropertyRelative("enabled"), GUIContent.none, GUILayout.Width(18f));
                 name.stringValue = EditorGUILayout.TextField(name.stringValue);
-                if (GUILayout.Button("刪除（Remove）", GUILayout.Width(105f)))
+                if (GUILayout.Button(new GUIContent("刪除", "Remove"), GUILayout.Width(105f)))
                 {
                     attachments.DeleteArrayElementAtIndex(i);
                     EditorGUILayout.EndHorizontal();
@@ -162,7 +173,7 @@ namespace Faidlix.UnityTools.Editor
                     break;
                 }
                 EditorGUILayout.EndHorizontal();
-                EditorGUILayout.PropertyField(slot.FindPropertyRelative("source"), new GUIContent("來源物件（Source）"));
+                EditorGUILayout.PropertyField(slot.FindPropertyRelative("source"), new GUIContent("來源物件", "Source"));
 
                 SerializedProperty dataVersion = slot.FindPropertyRelative("dataVersion");
                 SerializedProperty anchorMode = slot.FindPropertyRelative("anchorMode");
@@ -174,28 +185,28 @@ namespace Faidlix.UnityTools.Editor
                         : (int)FDX_AttachmentManager.AnchorMode.DirectTransform;
                     dataVersion.intValue = 1;
                 }
-                string[] anchorNames = { "人形骨架（Humanoid Bone）", "直接指定（Direct Transform）", "名稱／路徑（Name or Path）" };
-                anchorMode.enumValueIndex = EditorGUILayout.Popup("掛點模式（Anchor Mode）", anchorMode.enumValueIndex, anchorNames);
+                string[] anchorNames = { "人形骨架", "直接指定", "名稱／路徑" };
+                anchorMode.enumValueIndex = EditorGUILayout.Popup(new GUIContent("掛點模式", "Anchor Mode"), anchorMode.enumValueIndex, anchorNames);
                 if (anchorMode.enumValueIndex == (int)FDX_AttachmentManager.AnchorMode.HumanoidBone)
-                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("humanoidBone"), new GUIContent("人形骨頭（Humanoid Bone）"));
+                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("humanoidBone"), new GUIContent("人形骨頭", "Humanoid Bone"));
                 else if (anchorMode.enumValueIndex == (int)FDX_AttachmentManager.AnchorMode.DirectTransform)
-                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("customAnchor"), new GUIContent("直接掛點（Direct Anchor）"));
+                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("customAnchor"), new GUIContent("直接掛點", "Direct Anchor"));
                 else
                 {
-                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("searchRoot"), new GUIContent("搜尋根節點（Search Root）"));
-                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("anchorNameOrPath"), new GUIContent("名稱／相對路徑（Name or Relative Path）"));
-                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("ignoreCase"), new GUIContent("忽略大小寫（Ignore Case）"));
-                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("ignoreNamespace"), new GUIContent("忽略命名空間（Ignore Namespace）"));
+                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("searchRoot"), new GUIContent("搜尋根節點", "Search Root"));
+                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("anchorNameOrPath"), new GUIContent("名稱／相對路徑", "Name or Relative Path"));
+                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("ignoreCase"), new GUIContent("忽略大小寫", "Ignore Case"));
+                    EditorGUILayout.PropertyField(slot.FindPropertyRelative("ignoreNamespace"), new GUIContent("忽略命名空間", "Ignore Namespace"));
                 }
-                EditorGUILayout.PropertyField(slot.FindPropertyRelative("instantiateAtRuntime"), new GUIContent("執行時建立（Instantiate At Runtime）"));
-                EditorGUILayout.PropertyField(slot.FindPropertyRelative("localPosition"), new GUIContent("本地位置（Local Position）"));
-                EditorGUILayout.PropertyField(slot.FindPropertyRelative("localEulerAngles"), new GUIContent("本地旋轉（Local Rotation）"));
-                EditorGUILayout.PropertyField(slot.FindPropertyRelative("localScale"), new GUIContent("本地縮放（Local Scale）"));
+                EditorGUILayout.PropertyField(slot.FindPropertyRelative("instantiateAtRuntime"), new GUIContent("執行時建立", "Instantiate At Runtime"));
+                EditorGUILayout.PropertyField(slot.FindPropertyRelative("localPosition"), new GUIContent("本地位置", "Local Position"));
+                EditorGUILayout.PropertyField(slot.FindPropertyRelative("localEulerAngles"), new GUIContent("本地旋轉", "Local Rotation"));
+                EditorGUILayout.PropertyField(slot.FindPropertyRelative("localScale"), new GUIContent("本地縮放", "Local Scale"));
                 EditorGUILayout.PropertyField(slot.FindPropertyRelative("useIndividualMotionSettings"),
-                    new GUIContent("使用個別動態設定（Individual Motion Settings）"));
+                    new GUIContent("使用個別動態設定", "Individual Motion Settings"));
                 EditorGUILayout.EndVertical();
             }
-            if (GUILayout.Button("新增掛載項目（Add Attachment）"))
+            if (GUILayout.Button(new GUIContent("新增掛載項目", "Add Attachment")))
             {
                 serializedObject.ApplyModifiedProperties();
                 var manager = (FDX_AttachmentManager)target;
@@ -211,9 +222,9 @@ namespace Faidlix.UnityTools.Editor
         {
             var manager = (FDX_AttachmentManager)target;
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("偵測到的動態元件（Detected Motion Components）", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(new GUIContent("偵測到的動態元件", "Detected Motion Components"), EditorStyles.boldLabel);
             if (manager.SettingsMode == FDX_AttachmentManager.MotionSettingsMode.Unified &&
-                GUILayout.Button("將統一設定套用到全部物件（Apply Shared Settings To All）"))
+                GUILayout.Button(new GUIContent("將統一設定套用到全部物件", "Apply Shared Settings To All")))
             {
                 List<FDX_SecondaryMotion> all = manager.FindAllMotionComponents();
                 if (all.Count > 0) Undo.RecordObjects(all.ToArray(), "Apply FDX Motion Settings");
@@ -226,7 +237,7 @@ namespace Faidlix.UnityTools.Editor
                 EditorGUILayout.HelpBox("掛載來源與 Animator 子階層內都沒有偵測到 FDX_SecondaryMotion。", MessageType.None);
                 return;
             }
-            EditorGUILayout.HelpBox($"自動偵測到 {motions.Count} 個動態元件（Detected {motions.Count} motion components）。", MessageType.Info);
+            EditorGUILayout.HelpBox($"自動偵測到 {motions.Count} 個動態元件。", MessageType.Info);
             foreach (FDX_SecondaryMotion motion in motions)
             {
                 if (motion == null) continue;
@@ -234,7 +245,7 @@ namespace Faidlix.UnityTools.Editor
                 EditorGUILayout.ObjectField(motion.name, motion, typeof(FDX_SecondaryMotion), true);
                 bool individual = manager.UsesIndividualSettings(motion);
                 EditorGUI.BeginChangeCheck();
-                individual = EditorGUILayout.Toggle("使用個別設定（Individual Settings）", individual);
+                individual = EditorGUILayout.Toggle(new GUIContent("使用個別設定", "Individual Settings"), individual);
                 if (EditorGUI.EndChangeCheck())
                 {
                     Undo.RecordObject(manager, "Change FDX Individual Settings");
@@ -243,7 +254,7 @@ namespace Faidlix.UnityTools.Editor
                 }
                 if (!individual)
                 {
-                    EditorGUILayout.HelpBox("目前使用管理器的統一設定（Using shared manager settings）。", MessageType.None);
+                    EditorGUILayout.HelpBox("目前使用管理器的統一設定。", MessageType.None);
                     EditorGUILayout.EndVertical();
                     continue;
                 }
@@ -280,6 +291,7 @@ namespace Faidlix.UnityTools.Editor
         private SerializedProperty rotationPivot;
         private SerializedProperty pivotInfluenceRadius;
         private SerializedProperty pivotAxisSettings;
+        private SerializedProperty pivotGroups;
         private SerializedProperty enableAdvancedFlexible;
         private SerializedProperty endPoints;
         private SerializedProperty enablePreciseWeights;
@@ -307,6 +319,7 @@ namespace Faidlix.UnityTools.Editor
             rotationPivot = serializedObject.FindProperty("rotationPivot");
             pivotInfluenceRadius = serializedObject.FindProperty("pivotInfluenceRadius");
             pivotAxisSettings = serializedObject.FindProperty("pivotAxisSettings");
+            pivotGroups = serializedObject.FindProperty("pivotGroups");
             enableAdvancedFlexible = serializedObject.FindProperty("enableAdvancedFlexible");
             endPoints = serializedObject.FindProperty("endPoints");
             enablePreciseWeights = serializedObject.FindProperty("enablePreciseWeights");
@@ -331,18 +344,23 @@ namespace Faidlix.UnityTools.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            EditorGUILayout.PropertyField(simulate, new GUIContent("模擬（Simulate）"));
-            string[] forceSpaces = { "世界座標（World）", "基準本地座標（Anchor Local）" };
-            forceSpace.enumValueIndex = EditorGUILayout.Popup("力場座標（Force Space）", forceSpace.enumValueIndex, forceSpaces);
-            string[] sources = { "自動旋轉軸心（Automatic Pivot）", "現有骨架鏈（Existing Bone Chains）" };
-            motionSource.enumValueIndex = EditorGUILayout.Popup("運作來源（Motion Source）", motionSource.enumValueIndex, sources);
+            EditorGUILayout.PropertyField(simulate, new GUIContent("模擬", "Simulate"));
+            string[] forceSpaces = { "世界座標", "基準本地座標" };
+            forceSpace.enumValueIndex = EditorGUILayout.Popup(new GUIContent("力場座標", "Force Space"), forceSpace.enumValueIndex, forceSpaces);
+            string[] sources = { "自動旋轉軸心", "現有骨架鏈" };
+            motionSource.enumValueIndex = EditorGUILayout.Popup(new GUIContent("運作來源", "Motion Source"), motionSource.enumValueIndex, sources);
+
+            if ((FDX_SecondaryMotion.MotionSource)motionSource.enumValueIndex == FDX_SecondaryMotion.MotionSource.ExistingBones)
+                DrawBoneChains();
+            else
+                DrawAutomaticPivot();
 
             EditorGUILayout.Space(4f);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("動態設定（Motion Settings）", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(new GUIContent("動態設定", "Motion Settings"), EditorStyles.boldLabel);
             FDX_InspectorGUI.DrawMotionSettings(settings);
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("複製設定（Copy Settings）"))
+            if (GUILayout.Button(new GUIContent("複製設定", "Copy Settings")))
             {
                 serializedObject.ApplyModifiedProperties();
                 copiedSettings = new FDX_MotionSettings();
@@ -351,7 +369,7 @@ namespace Faidlix.UnityTools.Editor
             }
             using (new EditorGUI.DisabledScope(copiedSettings == null))
             {
-                if (GUILayout.Button("貼上設定（Paste Settings）"))
+                if (GUILayout.Button(new GUIContent("貼上設定", "Paste Settings")))
                 {
                     serializedObject.ApplyModifiedProperties();
                     var motion = (FDX_SecondaryMotion)target;
@@ -365,31 +383,26 @@ namespace Faidlix.UnityTools.Editor
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
 
-            if ((FDX_SecondaryMotion.MotionSource)motionSource.enumValueIndex == FDX_SecondaryMotion.MotionSource.ExistingBones)
-                DrawBoneChains();
-            else
-                DrawAutomaticPivot();
-
             EditorGUILayout.Space(6f);
-            EditorGUILayout.PropertyField(explicitColliders, new GUIContent("指定碰撞器（Explicit Colliders）"), true);
+            EditorGUILayout.PropertyField(explicitColliders, new GUIContent("指定碰撞器", "Explicit Colliders"), true);
             DrawGizmos();
             serializedObject.ApplyModifiedProperties();
 
             EditorGUILayout.Space(8f);
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("重新建立模擬（Rebuild Simulation）")) ((FDX_SecondaryMotion)target).RebuildSimulation();
-            if (GUILayout.Button("重設姿勢（Reset Pose）")) ((FDX_SecondaryMotion)target).ResetSimulation();
+            if (GUILayout.Button(new GUIContent("重新建立模擬", "Rebuild Simulation"))) ((FDX_SecondaryMotion)target).RebuildSimulation();
+            if (GUILayout.Button(new GUIContent("重設姿勢", "Reset Pose"))) ((FDX_SecondaryMotion)target).ResetSimulation();
             EditorGUILayout.EndHorizontal();
-            if (GUILayout.Button("記錄目前預設姿勢（Capture Current Rest Pose）"))
+            if (GUILayout.Button(new GUIContent("記錄目前預設姿勢", "Capture Current Rest Pose")))
                 ((FDX_SecondaryMotion)target).CaptureCurrentRestPose();
-            if (GUILayout.Button("檢查設定（Validate Setup）")) ShowValidation((FDX_SecondaryMotion)target);
+            if (GUILayout.Button(new GUIContent("檢查設定", "Validate Setup"))) ShowValidation((FDX_SecondaryMotion)target);
         }
 
         private void DrawBoneChains()
         {
             EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField("現有骨架鏈（Existing Bone Chains）", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(simulationAnchor, new GUIContent("模擬基準（Simulation Anchor）"));
+            EditorGUILayout.LabelField(new GUIContent("現有骨架鏈", "Existing Bone Chains"), EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(simulationAnchor, new GUIContent("模擬基準", "Simulation Anchor"));
             EditorGUILayout.HelpBox("模擬基準只提供移動與旋轉參考，不會被加入擺動。每組只需指定第一根骨頭。", MessageType.Info);
             for (int i = 0; i < boneChains.arraySize; i++)
             {
@@ -398,7 +411,7 @@ namespace Faidlix.UnityTools.Editor
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.PropertyField(chain.FindPropertyRelative("enabled"), GUIContent.none, GUILayout.Width(18f));
                 EditorGUILayout.PropertyField(chain.FindPropertyRelative("displayName"), GUIContent.none);
-                if (GUILayout.Button("刪除（Remove）", GUILayout.Width(105f)))
+                if (GUILayout.Button(new GUIContent("刪除", "Remove"), GUILayout.Width(105f)))
                 {
                     boneChains.DeleteArrayElementAtIndex(i);
                     EditorGUILayout.EndHorizontal();
@@ -406,28 +419,28 @@ namespace Faidlix.UnityTools.Editor
                     break;
                 }
                 EditorGUILayout.EndHorizontal();
-                EditorGUILayout.PropertyField(chain.FindPropertyRelative("root"), new GUIContent("骨架鏈起點（Chain Root）"));
-                EditorGUILayout.PropertyField(chain.FindPropertyRelative("solo"), new GUIContent("單獨預覽（Solo）"));
+                EditorGUILayout.PropertyField(chain.FindPropertyRelative("root"), new GUIContent("骨架鏈起點", "Chain Root"));
+                EditorGUILayout.PropertyField(chain.FindPropertyRelative("solo"), new GUIContent("單獨預覽", "Solo"));
                 if (chain.FindPropertyRelative("root").objectReferenceValue != null &&
-                    GUILayout.Button("尋找並加入對側骨架（Find Opposite Bone）"))
+                    GUILayout.Button(new GUIContent("尋找並加入對側骨架", "Find Opposite Bone")))
                 {
                     FindAndAddOppositeBone(i);
                     GUIUtility.ExitGUI();
                 }
-                EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeChildBones"), new GUIContent("自動包含子骨頭（Include Child Bones）"));
+                EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeChildBones"), new GUIContent("自動包含子骨頭", "Include Child Bones"));
                 if (chain.FindPropertyRelative("includeChildBones").boolValue)
                 {
-                    EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeAllBranches"), new GUIContent("包含全部分支（Include All Branches）"));
-                    EditorGUILayout.PropertyField(chain.FindPropertyRelative("endBone"), new GUIContent("結束骨頭（End Bone）"));
-                    EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeEndBone"), new GUIContent("模擬結束骨頭（Include End Bone）"));
+                    EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeAllBranches"), new GUIContent("包含全部分支", "Include All Branches"));
+                    EditorGUILayout.PropertyField(chain.FindPropertyRelative("endBone"), new GUIContent("結束骨頭", "End Bone"));
+                    EditorGUILayout.PropertyField(chain.FindPropertyRelative("includeEndBone"), new GUIContent("模擬結束骨頭", "Include End Bone"));
                 }
-                DrawObjectList(chain.FindPropertyRelative("excludedBones"), "排除骨頭（Excluded Bones）", typeof(Transform));
-                EditorGUILayout.Slider(chain.FindPropertyRelative("influence"), 0f, 2f, new GUIContent("影響倍率（Influence）"));
-                EditorGUILayout.Slider(chain.FindPropertyRelative("displayRadius"), 0.001f, 1f, new GUIContent("顯示範圍（Display Radius）"));
+                DrawObjectList(chain.FindPropertyRelative("excludedBones"), "排除骨頭", typeof(Transform));
+                EditorGUILayout.Slider(chain.FindPropertyRelative("influence"), 0f, 2f, new GUIContent("影響倍率", "Influence"));
+                EditorGUILayout.Slider(chain.FindPropertyRelative("displayRadius"), 0.001f, 1f, new GUIContent("顯示範圍", "Display Radius"));
                 FDX_InspectorGUI.DrawAxisSettings(chain.FindPropertyRelative("axisSettings"));
                 EditorGUILayout.EndVertical();
             }
-            if (GUILayout.Button("新增骨架鏈組（Add Bone Chain）"))
+            if (GUILayout.Button(new GUIContent("新增骨架鏈組", "Add Bone Chain")))
             {
                 AddBoneChain(null);
                 GUIUtility.ExitGUI();
@@ -438,17 +451,17 @@ namespace Faidlix.UnityTools.Editor
             if (existingBones.arraySize > 0)
             {
                 EditorGUILayout.Space(4f);
-                EditorGUILayout.LabelField("舊版單骨頭設定（Legacy Bone Entries）", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(new GUIContent("舊版單骨頭設定", "Legacy Bone Entries"), EditorStyles.boldLabel);
                 for (int i = 0; i < existingBones.arraySize; i++)
                 {
                     SerializedProperty entry = existingBones.GetArrayElementAtIndex(i);
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("transform"), new GUIContent("骨頭（Bone）"));
-                    EditorGUILayout.Slider(entry.FindPropertyRelative("influence"), 0f, 2f, new GUIContent("影響倍率（Influence）"));
-                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("localAxis"), new GUIContent("本地方向（Local Axis）"));
-                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("length"), new GUIContent("長度（Length）"));
+                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("transform"), new GUIContent("骨頭", "Bone"));
+                    EditorGUILayout.Slider(entry.FindPropertyRelative("influence"), 0f, 2f, new GUIContent("影響倍率", "Influence"));
+                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("localAxis"), new GUIContent("本地方向", "Local Axis"));
+                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("length"), new GUIContent("長度", "Length"));
                     FDX_InspectorGUI.DrawAxisSettings(entry.FindPropertyRelative("axisSettings"));
-                    if (GUILayout.Button("移除舊版項目（Remove Legacy Entry）")) { existingBones.DeleteArrayElementAtIndex(i); break; }
+                    if (GUILayout.Button(new GUIContent("移除舊版項目", "Remove Legacy Entry"))) { existingBones.DeleteArrayElementAtIndex(i); break; }
                     EditorGUILayout.EndVertical();
                 }
             }
@@ -457,31 +470,93 @@ namespace Faidlix.UnityTools.Editor
         private void DrawAutomaticPivot()
         {
             EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField("預設旋轉軸心（Default Rotation Pivot）", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(simulationAnchor, new GUIContent("模擬基準（Simulation Anchor）"));
-            EditorGUILayout.PropertyField(autoCreatePivot, new GUIContent("自動建立旋轉軸心（Auto Create Pivot）"));
-            EditorGUILayout.PropertyField(rotationPivot, new GUIContent("旋轉軸心（Rotation Pivot）"));
-            EditorGUILayout.Slider(pivotInfluenceRadius, 0.001f, 2f, new GUIContent("軸心影響範圍（Pivot Influence Radius）"));
-            FDX_InspectorGUI.DrawAxisSettings(pivotAxisSettings);
-            if (rotationPivot.objectReferenceValue == null && GUILayout.Button("現在建立旋轉軸心（Create Rotation Pivot Now）"))
-                CreatePivot();
+            EditorGUILayout.LabelField(new GUIContent("旋轉軸心組", "Rotation Pivot Groups"), EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(autoCreatePivot, new GUIContent("自動建立第一個旋轉軸心", "Auto Create First Rotation Pivot"));
+            var motion = (FDX_SecondaryMotion)target;
+            for (int i = 0; i < pivotGroups.arraySize && i < motion.PivotGroups.Count; i++)
+                DrawPivotGroup(i, pivotGroups.GetArrayElementAtIndex(i), motion.PivotGroups[i]);
+            if (GUILayout.Button(new GUIContent("新增旋轉軸心組", "Add Rotation Pivot Group"))) AddPivotGroup();
 
-            EditorGUILayout.Space(6f);
-            EditorGUILayout.PropertyField(enableAdvancedFlexible, new GUIContent("啟用進階柔性設定（Advanced Flexible Settings）"));
-            if (!enableAdvancedFlexible.boolValue) return;
-            EditorGUI.indentLevel++;
-            DrawEndPointList(endPoints, ((FDX_SecondaryMotion)target).EndPoints,
-                ((FDX_SecondaryMotion)target).RotationPivot != null ? ((FDX_SecondaryMotion)target).RotationPivot : ((FDX_SecondaryMotion)target).transform,
-                0);
-            if (GUILayout.Button("新增尾端控制點（Add End Point）")) AddRootEndPoint();
             EditorGUILayout.Space(4f);
-            EditorGUILayout.PropertyField(enablePreciseWeights, new GUIContent("啟用精細權重設定（Precise Weight Editing）"));
+            EditorGUILayout.PropertyField(enablePreciseWeights, new GUIContent("啟用精細權重設定", "Precise Weight Editing"));
             if (enablePreciseWeights.boolValue)
             {
-                EditorGUILayout.PropertyField(deformingRenderer, new GUIContent("變形網格（Deforming Renderer）"));
-                if (GUILayout.Button("開啟 FDX 骨架與權重編輯器（Open Rig & Weight Editor）")) OpenWeightEditor();
+                EditorGUILayout.PropertyField(deformingRenderer, new GUIContent("變形網格", "Deforming Renderer"));
+                if (GUILayout.Button(new GUIContent("開啟 FDX 骨架與權重編輯器", "Open Rig & Weight Editor"))) OpenWeightEditor();
             }
-            EditorGUI.indentLevel--;
+        }
+
+        private void DrawPivotGroup(int index, SerializedProperty groupProperty, FDX_SecondaryMotion.PivotGroup group)
+        {
+            SerializedProperty expanded = groupProperty.FindPropertyRelative("expanded");
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("enabled"), GUIContent.none, GUILayout.Width(18f));
+            expanded.boolValue = EditorGUILayout.Foldout(expanded.boolValue,
+                string.IsNullOrWhiteSpace(group.displayName) ? $"旋轉軸心 {index + 1}" : group.displayName, true);
+            if (GUILayout.Button("刪除", GUILayout.Width(45f)))
+            {
+                RemovePivotGroup(index, group);
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.EndVertical();
+                GUIUtility.ExitGUI();
+            }
+            EditorGUILayout.EndHorizontal();
+            if (!expanded.boolValue) { EditorGUILayout.EndVertical(); return; }
+
+            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("displayName"), new GUIContent("顯示名稱", "Display Name"));
+            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("solo"), new GUIContent("單獨預覽", "Solo"));
+            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("pivot"), new GUIContent("旋轉軸心", "Rotation Pivot"));
+            EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("motionTarget"),
+                new GUIContent("擺動目標", "Motion Target; leave empty to use the pivot"));
+            SerializedProperty automaticAnchor = groupProperty.FindPropertyRelative("automaticSimulationAnchor");
+            EditorGUILayout.PropertyField(automaticAnchor, new GUIContent("自動取得模擬基準", "Automatic Simulation Anchor"));
+            if (automaticAnchor.boolValue)
+            {
+                Transform resolved = group.pivot != null && group.pivot.parent != null ? group.pivot.parent : group.pivot;
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.ObjectField(new GUIContent("目前模擬基準", "Resolved Simulation Anchor"), resolved, typeof(Transform), true);
+            }
+            else EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("simulationAnchor"), new GUIContent("模擬基準", "Simulation Anchor"));
+            EditorGUILayout.Slider(groupProperty.FindPropertyRelative("influenceRadius"), 0.001f, 2f,
+                new GUIContent("軸心影響範圍", "Pivot Influence Radius"));
+            FDX_InspectorGUI.DrawAxisSettings(groupProperty.FindPropertyRelative("axisSettings"));
+
+            SerializedProperty liveMirror = groupProperty.FindPropertyRelative("liveMirror");
+            EditorGUILayout.PropertyField(liveMirror, new GUIContent("持續對稱編輯", "Live Mirror Editing"));
+            if (liveMirror.boolValue)
+            {
+                string[] axes = { "X 軸", "Y 軸", "Z 軸" };
+                SerializedProperty mirrorAxis = groupProperty.FindPropertyRelative("mirrorAxis");
+                mirrorAxis.enumValueIndex = EditorGUILayout.Popup(new GUIContent("對稱軸向", "Mirror Axis"), mirrorAxis.enumValueIndex, axes);
+                EditorGUILayout.PropertyField(groupProperty.FindPropertyRelative("mirrorCenter"),
+                    new GUIContent("對稱中心", "Mirror Center; empty uses this component Transform"));
+            }
+            EditorGUILayout.BeginHorizontal();
+            if (group.pivot == null && GUILayout.Button(new GUIContent("建立旋轉軸心", "Create Rotation Pivot"))) CreatePivot(index);
+            if (group.pivot != null)
+            {
+                string editLabel = editingTip == group.pivot ? "結束編輯" : "編輯軸心位置";
+                if (GUILayout.Button(new GUIContent(editLabel, "Edit Pivot Position"))) editingTip = editingTip == group.pivot ? null : group.pivot;
+                if (GUILayout.Button(new GUIContent("複製鏡射", "Duplicate Mirrored")))
+                {
+                    DuplicateMirroredPivot(index);
+                    GUIUtility.ExitGUI();
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+
+            SerializedProperty advanced = groupProperty.FindPropertyRelative("enableAdvancedFlexible");
+            EditorGUILayout.PropertyField(advanced, new GUIContent("啟用進階柔性設定", "Advanced Flexible Settings"));
+            if (advanced.boolValue)
+            {
+                EditorGUI.indentLevel++;
+                SerializedProperty points = groupProperty.FindPropertyRelative("endPoints");
+                DrawEndPointList(points, group.endPoints, group.pivot != null ? group.pivot : ((FDX_SecondaryMotion)target).transform, 0);
+                if (GUILayout.Button(new GUIContent("新增尾端控制點", "Add End Point"))) AddRootEndPoint(group);
+                EditorGUI.indentLevel--;
+            }
+            EditorGUILayout.EndVertical();
         }
 
         private void DrawEndPointList(SerializedProperty listProperty,
@@ -506,36 +581,36 @@ namespace Faidlix.UnityTools.Editor
                 EditorGUILayout.EndHorizontal();
                 if (expanded.boolValue)
                 {
-                    EditorGUILayout.PropertyField(pointProperty.FindPropertyRelative("displayName"), new GUIContent("顯示名稱（Display Name）"));
-                    EditorGUILayout.PropertyField(pointProperty.FindPropertyRelative("tip"), new GUIContent("控制點（Tip）"));
+                    EditorGUILayout.PropertyField(pointProperty.FindPropertyRelative("displayName"), new GUIContent("顯示名稱", "Display Name"));
+                    EditorGUILayout.PropertyField(pointProperty.FindPropertyRelative("tip"), new GUIContent("控制點", "Tip"));
                     EditorGUILayout.Slider(pointProperty.FindPropertyRelative("detectionRadius"), 0.001f, 2f,
-                        new GUIContent("偵測半徑（Detection Radius）"));
+                        new GUIContent("偵測半徑", "Detection Radius"));
                     EditorGUILayout.Slider(pointProperty.FindPropertyRelative("motionMultiplier"), 0f, 2f,
-                        new GUIContent("擺動倍率（Motion Multiplier）"));
+                        new GUIContent("擺動倍率", "Motion Multiplier"));
                     EditorGUILayout.IntSlider(pointProperty.FindPropertyRelative("generatedSegments"), 1, 12,
-                        new GUIContent("自動骨段數（Generated Segments）"));
-                    EditorGUILayout.PropertyField(pointProperty.FindPropertyRelative("weightFalloff"), new GUIContent("權重衰減（Weight Falloff）"));
+                        new GUIContent("自動骨段數", "Generated Segments"));
+                    EditorGUILayout.PropertyField(pointProperty.FindPropertyRelative("weightFalloff"), new GUIContent("權重衰減", "Weight Falloff"));
                     FDX_InspectorGUI.DrawAxisSettings(pointProperty.FindPropertyRelative("axisSettings"));
 
                     SerializedProperty liveMirror = pointProperty.FindPropertyRelative("liveMirror");
-                    EditorGUILayout.PropertyField(liveMirror, new GUIContent("持續鏡像（Live Mirror）"));
+                    EditorGUILayout.PropertyField(liveMirror, new GUIContent("持續對稱編輯", "Live Mirror Editing"));
                     if (liveMirror.boolValue)
                     {
-                        string[] axes = { "X 軸（X Axis）", "Y 軸（Y Axis）", "Z 軸（Z Axis）" };
+                        string[] axes = { "X 軸", "Y 軸", "Z 軸" };
                         SerializedProperty mirrorAxis = pointProperty.FindPropertyRelative("mirrorAxis");
-                        mirrorAxis.enumValueIndex = EditorGUILayout.Popup("鏡像軸向（Mirror Axis）", mirrorAxis.enumValueIndex, axes);
+                        mirrorAxis.enumValueIndex = EditorGUILayout.Popup(new GUIContent("對稱軸向", "Mirror Axis"), mirrorAxis.enumValueIndex, axes);
                     }
 
                     EditorGUILayout.BeginHorizontal();
-                    string editLabel = editingTip == point.tip ? "結束編輯（Finish Editing）" : "編輯位置（Edit Position）";
+                    string editLabel = editingTip == point.tip ? "結束編輯" : "編輯位置";
                     if (GUILayout.Button(editLabel)) editingTip = editingTip == point.tip ? null : point.tip;
-                    if (GUILayout.Button("複製鏡射（Duplicate Mirrored）"))
+                    if (GUILayout.Button(new GUIContent("複製鏡射", "Duplicate Mirrored")))
                     {
                         DuplicateMirrored(runtimeList, point, parent);
                         GUIUtility.ExitGUI();
                     }
                     EditorGUILayout.EndHorizontal();
-                    if (GUILayout.Button("新增子控制點（Add Child End Point）"))
+                    if (GUILayout.Button(new GUIContent("新增子控制點", "Add Child End Point")))
                     {
                         AddChildEndPoint(point);
                         GUIUtility.ExitGUI();
@@ -556,16 +631,16 @@ namespace Faidlix.UnityTools.Editor
         private void DrawGizmos()
         {
             EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField("場景顯示（Scene Gizmos）", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(showGizmos, new GUIContent("顯示 Gizmo（Show Gizmos）"));
+            EditorGUILayout.LabelField(new GUIContent("場景顯示", "Scene Gizmos"), EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(showGizmos, new GUIContent("顯示輔助圖形", "Show Gizmos"));
             if (!showGizmos.boolValue) return;
             EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(showAllInfluenceRanges, new GUIContent("顯示全部影響範圍（Show All Influence Ranges）"));
-            EditorGUILayout.PropertyField(pivotColor, new GUIContent("軸心顏色（Pivot Color）"));
-            EditorGUILayout.PropertyField(endPointColor, new GUIContent("控制點顏色（End Point Color）"));
-            EditorGUILayout.PropertyField(mirrorColor, new GUIContent("鏡像顏色（Mirror Color）"));
-            EditorGUILayout.Slider(pivotGizmoRadius, 0.001f, 1f, new GUIContent("軸心標記大小（Pivot Gizmo Radius）"));
-            EditorGUILayout.Slider(endPointGizmoRadius, 0.001f, 1f, new GUIContent("控制點標記大小（End Point Gizmo Radius）"));
+            EditorGUILayout.PropertyField(showAllInfluenceRanges, new GUIContent("顯示全部影響範圍", "Show All Influence Ranges"));
+            EditorGUILayout.PropertyField(pivotColor, new GUIContent("軸心顏色", "Pivot Color"));
+            EditorGUILayout.PropertyField(endPointColor, new GUIContent("控制點顏色", "End Point Color"));
+            EditorGUILayout.PropertyField(mirrorColor, new GUIContent("對稱預覽顏色", "Mirror Color"));
+            EditorGUILayout.Slider(pivotGizmoRadius, 0.001f, 1f, new GUIContent("軸心標記大小", "Pivot Gizmo Radius"));
+            EditorGUILayout.Slider(endPointGizmoRadius, 0.001f, 1f, new GUIContent("控制點標記大小", "End Point Gizmo Radius"));
             EditorGUI.indentLevel--;
         }
 
@@ -584,28 +659,106 @@ namespace Faidlix.UnityTools.Editor
             }
         }
 
-        private void CreatePivot()
+        private void CreatePivot(int groupIndex)
         {
             var motion = (FDX_SecondaryMotion)target;
-            var go = new GameObject($"{motion.name}_FDX_Pivot");
+            if (groupIndex < 0 || groupIndex >= motion.PivotGroups.Count) return;
+            var group = motion.PivotGroups[groupIndex];
+            var go = new GameObject($"{motion.name}_FDX_Pivot_{groupIndex + 1}");
             Undo.RegisterCreatedObjectUndo(go, "Create FDX Pivot");
             Undo.SetTransformParent(go.transform, motion.transform, "Parent FDX Pivot");
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.identity;
             go.transform.localScale = Vector3.one;
             Undo.RecordObject(motion, "Assign FDX Pivot");
-            motion.RotationPivot = go.transform;
+            group.pivot = go.transform;
+            if (groupIndex == 0) motion.RotationPivot = go.transform;
             EditorUtility.SetDirty(motion);
             serializedObject.Update();
         }
 
-        private void AddRootEndPoint()
+        private void AddRootEndPoint(FDX_SecondaryMotion.PivotGroup group)
         {
             var motion = (FDX_SecondaryMotion)target;
-            Transform parent = motion.RotationPivot != null ? motion.RotationPivot : motion.transform;
+            Transform parent = group.pivot != null ? group.pivot : motion.transform;
             Undo.RecordObject(motion, "Add FDX End Point");
-            motion.EndPoints.Add(CreateEndPoint(parent, $"FDX_EndPoint_{motion.EndPoints.Count + 1}"));
+            group.endPoints.Add(CreateEndPoint(parent, $"FDX_EndPoint_{group.endPoints.Count + 1}"));
             EditorUtility.SetDirty(motion);
+        }
+
+        private void AddPivotGroup()
+        {
+            serializedObject.ApplyModifiedProperties();
+            var motion = (FDX_SecondaryMotion)target;
+            Undo.RecordObject(motion, "Add FDX Pivot Group");
+            motion.PivotGroups.Add(new FDX_SecondaryMotion.PivotGroup
+            {
+                displayName = $"旋轉軸心 {motion.PivotGroups.Count + 1}"
+            });
+            EditorUtility.SetDirty(motion);
+            serializedObject.Update();
+        }
+
+        private void RemovePivotGroup(int index, FDX_SecondaryMotion.PivotGroup group)
+        {
+            var motion = (FDX_SecondaryMotion)target;
+            Undo.RecordObject(motion, "Remove FDX Pivot Group");
+            if (editingTip == group.pivot) editingTip = null;
+            motion.PivotGroups.RemoveAt(index);
+            EditorUtility.SetDirty(motion);
+            serializedObject.Update();
+        }
+
+        private void DuplicateMirroredPivot(int index)
+        {
+            serializedObject.ApplyModifiedProperties();
+            var motion = (FDX_SecondaryMotion)target;
+            if (index < 0 || index >= motion.PivotGroups.Count) return;
+            var source = motion.PivotGroups[index];
+            Transform center = source.mirrorCenter != null ? source.mirrorCenter : motion.transform;
+            var clone = new FDX_SecondaryMotion.PivotGroup
+            {
+                displayName = SwapSideName(source.displayName),
+                enabled = source.enabled,
+                motionTarget = null,
+                automaticSimulationAnchor = source.automaticSimulationAnchor,
+                simulationAnchor = source.simulationAnchor,
+                influenceRadius = source.influenceRadius,
+                liveMirror = false,
+                mirrorAxis = source.mirrorAxis,
+                mirrorCenter = source.mirrorCenter,
+                enableAdvancedFlexible = source.enableAdvancedFlexible
+            };
+            clone.axisSettings.CopyFrom(source.axisSettings);
+            if (source.pivot != null)
+            {
+                var go = new GameObject(SwapSideName(source.pivot.name));
+                Undo.RegisterCreatedObjectUndo(go, "Create Mirrored FDX Pivot");
+                Undo.SetTransformParent(go.transform, source.pivot.parent, "Parent Mirrored FDX Pivot");
+                Vector3 localToCenter = center.InverseTransformPoint(source.pivot.position);
+                go.transform.position = center.TransformPoint(FDX_SecondaryMotion.MirrorLocalPoint(localToCenter, source.mirrorAxis));
+                go.transform.rotation = center.rotation * MirrorRotation(center.rotation, source.pivot.rotation, source.mirrorAxis);
+                go.transform.localScale = source.pivot.localScale;
+                clone.pivot = go.transform;
+            }
+            Transform pointParent = clone.pivot != null ? clone.pivot : motion.transform;
+            foreach (FDX_SecondaryMotion.FlexibleEndPoint point in source.endPoints)
+                clone.endPoints.Add(CloneMirrored(point, pointParent, source.mirrorAxis));
+            Undo.RecordObject(motion, "Duplicate Mirrored FDX Pivot Group");
+            motion.PivotGroups.Add(clone);
+            EditorUtility.SetDirty(motion);
+            serializedObject.Update();
+        }
+
+        private static Quaternion MirrorRotation(Quaternion centerRotation, Quaternion sourceRotation,
+            FDX_SecondaryMotion.MirrorAxis axis)
+        {
+            Quaternion local = Quaternion.Inverse(centerRotation) * sourceRotation;
+            Vector3 euler = local.eulerAngles;
+            if (axis == FDX_SecondaryMotion.MirrorAxis.X) { euler.y = -euler.y; euler.z = -euler.z; }
+            else if (axis == FDX_SecondaryMotion.MirrorAxis.Y) { euler.x = -euler.x; euler.z = -euler.z; }
+            else { euler.x = -euler.x; euler.y = -euler.y; }
+            return Quaternion.Euler(euler);
         }
 
         private void AddChildEndPoint(FDX_SecondaryMotion.FlexibleEndPoint parentPoint)
@@ -706,7 +859,7 @@ namespace Faidlix.UnityTools.Editor
             string oppositeName = SwapSideName(source.root.name);
             if (oppositeName.EndsWith("_Mirrored", StringComparison.Ordinal))
             {
-                EditorUtility.DisplayDialog("FDX", "無法從名稱判斷左右側（Cannot infer opposite side from name）。", "確定（OK）");
+                EditorUtility.DisplayDialog("FDX", "無法從名稱判斷左右側。", "確定");
                 return;
             }
 
@@ -714,7 +867,7 @@ namespace Faidlix.UnityTools.Editor
             Transform opposite = FindUniqueTransform(searchRoot, oppositeName);
             if (opposite == null)
             {
-                EditorUtility.DisplayDialog("FDX", $"找不到唯一的對側骨架：{oppositeName}", "確定（OK）");
+                EditorUtility.DisplayDialog("FDX", $"找不到唯一的對側骨架：{oppositeName}", "確定");
                 return;
             }
             foreach (FDX_SecondaryMotion.BoneChain existing in motion.BoneChains)
@@ -759,8 +912,8 @@ namespace Faidlix.UnityTools.Editor
         private void DrawBoneCandidateScanner()
         {
             EditorGUILayout.Space(5f);
-            EditorGUILayout.LabelField("骨架候選（Bone Candidates）", EditorStyles.boldLabel);
-            if (GUILayout.Button("掃描骨架候選（Scan Bone Candidates）")) ScanBoneCandidates();
+            EditorGUILayout.LabelField(new GUIContent("骨架候選", "Bone Candidates"), EditorStyles.boldLabel);
+            if (GUILayout.Button(new GUIContent("掃描骨架候選", "Scan Bone Candidates"))) ScanBoneCandidates();
             if (boneCandidates.Count == 0)
             {
                 EditorGUILayout.HelpBox("尚未掃描到可能的骨架鏈起點。掃描只會提案，不會自動修改設定。", MessageType.None);
@@ -772,7 +925,7 @@ namespace Faidlix.UnityTools.Editor
                 if (candidate == null) continue;
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.ObjectField(candidate, typeof(Transform), true);
-                if (GUILayout.Button("加入（Add）", GUILayout.Width(90f)))
+                if (GUILayout.Button(new GUIContent("加入", "Add"), GUILayout.Width(90f)))
                 {
                     AddBoneChain(candidate);
                     GUIUtility.ExitGUI();
@@ -868,8 +1021,8 @@ namespace Faidlix.UnityTools.Editor
         private static void ShowValidation(FDX_SecondaryMotion motion)
         {
             List<string> issues = motion.ValidateSetup();
-            EditorUtility.DisplayDialog("FDX 設定檢查（Validate Setup）",
-                issues.Count == 0 ? "設定有效（Setup is valid）。" : string.Join("\n", issues), "確定（OK）");
+            EditorUtility.DisplayDialog("FDX 設定檢查",
+                issues.Count == 0 ? "設定有效。" : string.Join("\n", issues), "確定");
         }
 
         private void OpenWeightEditor()

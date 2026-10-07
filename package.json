@@ -1,8 +1,8 @@
 {
   "name": "com.faidlix.attachment-motion",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": "FDX Attachment Motion",
-  "description": "Attach prefabs to Humanoid or named transforms and add recursive bone-chain or pivot-based secondary motion with per-axis controls, mirroring, collision, automatic skin weights, edit-mode preview, and an editor weight brush.",
+  "description": "Attach prefabs to Humanoid or named transforms and add multi-pivot or recursive bone-chain secondary motion with per-axis controls, mirroring, collision, automatic skin weights, edit-mode preview, and an editor weight brush.",
   "unity": "2022.3",
   "author": {
     "name": "Faidlix"
