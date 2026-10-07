@@ -61,7 +61,7 @@ namespace Faidlix.UnityTools
         [Header("角色")]
         [SerializeField] private Animator animator;
 
-        [Header("掛載清單")]
+        [Header("骨架掛物件設定")]
         [SerializeField] private List<AttachmentSlot> attachments = new List<AttachmentSlot>();
 
         [Header("動態設定同步")]
@@ -71,6 +71,8 @@ namespace Faidlix.UnityTools
         [SerializeField] private List<MotionOverride> motionOverrides = new List<MotionOverride>();
 
         [HideInInspector, SerializeField] private bool previewInEditMode;
+        [HideInInspector, SerializeField] private bool attachmentsExpanded = true;
+        [HideInInspector, SerializeField] private bool detectedMotionsExpanded = true;
 
         private readonly List<GameObject> ownedRuntimeInstances = new List<GameObject>();
 
@@ -78,6 +80,17 @@ namespace Faidlix.UnityTools
         public IReadOnlyList<AttachmentSlot> Attachments => attachments;
         public MotionSettingsMode SettingsMode => settingsMode;
         public FDX_MotionSettings SharedMotionSettings => sharedMotionSettings;
+        public bool SharedSettingsEnabled
+        {
+            get => applySharedSettingsOnAttach && settingsMode == MotionSettingsMode.Unified;
+            set
+            {
+                applySharedSettingsOnAttach = value;
+                settingsMode = value ? MotionSettingsMode.Unified : MotionSettingsMode.PerAttachment;
+            }
+        }
+        public bool AttachmentsExpanded { get => attachmentsExpanded; set => attachmentsExpanded = value; }
+        public bool DetectedMotionsExpanded { get => detectedMotionsExpanded; set => detectedMotionsExpanded = value; }
         public bool PreviewInEditMode
         {
             get => previewInEditMode;
@@ -302,7 +315,7 @@ namespace Faidlix.UnityTools
                 if (slot == null || !slot.useIndividualMotionSettings) continue;
                 if (FindMotionComponents(slot).Contains(motion)) return true;
             }
-            return settingsMode == MotionSettingsMode.PerAttachment;
+            return !SharedSettingsEnabled || settingsMode == MotionSettingsMode.PerAttachment;
         }
 
         public void SetIndividualSettings(FDX_SecondaryMotion motion, bool value)

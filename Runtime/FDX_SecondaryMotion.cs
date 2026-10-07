@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Faidlix.UnityTools
 {
+    public enum FDX_DistanceUpdateMode { FixedFrameInterval, FixedUpdateFrequency }
+    public enum FDX_DistanceQuality { Low, Medium, High, Custom }
+
     [Serializable]
     public sealed class FDX_MotionSettings
     {
@@ -29,6 +32,15 @@ namespace Faidlix.UnityTools
         [Min(0.001f)] public float collisionRadius = 0.03f;
         [Min(0f)] public float collisionStrength = 20f;
         [Range(0f, 1f)] public float collisionFriction = 0.2f;
+        public bool enableDistanceSimulation = true;
+        public Transform distanceReference;
+        public FDX_DistanceUpdateMode distanceUpdateMode = FDX_DistanceUpdateMode.FixedFrameInterval;
+        public FDX_DistanceQuality distanceQuality = FDX_DistanceQuality.High;
+        [Min(0f)] public float fullSimulationDistance = 15f;
+        [Min(0f)] public float reducedSimulationDistance = 25f;
+        [Min(0f)] public float minimalSimulationDistance = 35f;
+        public Vector3Int customFrameIntervals = new Vector3Int(1, 2, 4);
+        public Vector3 customUpdateFrequencies = new Vector3(60f, 30f, 15f);
 
         public Vector3 Inertia => perAxisSettings ? ClampPositive(inertiaPerAxis) : Vector3.one * Mathf.Max(0f, inertia);
         public Vector3 Spring => perAxisSettings ? ClampPositive(springPerAxis) : Vector3.one * Mathf.Max(0f, spring);
@@ -60,6 +72,39 @@ namespace Faidlix.UnityTools
             collisionRadius = other.collisionRadius;
             collisionStrength = other.collisionStrength;
             collisionFriction = other.collisionFriction;
+            enableDistanceSimulation = other.enableDistanceSimulation;
+            distanceReference = other.distanceReference;
+            distanceUpdateMode = other.distanceUpdateMode;
+            distanceQuality = other.distanceQuality;
+            fullSimulationDistance = other.fullSimulationDistance;
+            reducedSimulationDistance = other.reducedSimulationDistance;
+            minimalSimulationDistance = other.minimalSimulationDistance;
+            customFrameIntervals = other.customFrameIntervals;
+            customUpdateFrequencies = other.customUpdateFrequencies;
+        }
+
+        public int GetFrameInterval(int stage)
+        {
+            Vector3Int values = distanceQuality == FDX_DistanceQuality.Low
+                ? new Vector3Int(2, 4, 8)
+                : distanceQuality == FDX_DistanceQuality.Medium
+                    ? new Vector3Int(1, 3, 6)
+                    : distanceQuality == FDX_DistanceQuality.High
+                        ? new Vector3Int(1, 2, 4)
+                        : customFrameIntervals;
+            return Mathf.Max(1, stage == 0 ? values.x : stage == 1 ? values.y : values.z);
+        }
+
+        public float GetUpdateFrequency(int stage)
+        {
+            Vector3 values = distanceQuality == FDX_DistanceQuality.Low
+                ? new Vector3(20f, 10f, 5f)
+                : distanceQuality == FDX_DistanceQuality.Medium
+                    ? new Vector3(30f, 20f, 10f)
+                    : distanceQuality == FDX_DistanceQuality.High
+                        ? new Vector3(60f, 30f, 15f)
+                        : customUpdateFrequencies;
+            return Mathf.Max(1f, stage == 0 ? values.x : stage == 1 ? values.y : values.z);
         }
 
         private static Vector3 ClampPositive(Vector3 value) => new Vector3(
@@ -145,6 +190,7 @@ namespace Faidlix.UnityTools
         [Serializable]
         public sealed class BoneChain
         {
+            [HideInInspector] public string editorId;
             public string displayName = "Bone Chain";
             public bool enabled = true;
             public bool solo;
@@ -157,6 +203,17 @@ namespace Faidlix.UnityTools
             [Range(0f, 2f)] public float influence = 1f;
             [Min(0.001f)] public float displayRadius = 0.04f;
             public FDX_AxisControlSettings axisSettings = new FDX_AxisControlSettings();
+        }
+
+        [Serializable]
+        public sealed class BoneChainGroup
+        {
+            public string id;
+            public string parentId;
+            public string displayName;
+            public bool expanded = true;
+            public bool commonSettingsExpanded;
+            public List<string> chainIds = new List<string>();
         }
 
         [Serializable]
@@ -204,6 +261,11 @@ namespace Faidlix.UnityTools
         [SerializeField] private FDX_MotionSettings settings = new FDX_MotionSettings();
         [SerializeField] private Transform simulationAnchor;
         [SerializeField] private List<BoneChain> boneChains = new List<BoneChain>();
+        [SerializeField, HideInInspector] private List<BoneChainGroup> boneChainGroups = new List<BoneChainGroup>();
+        [SerializeField, HideInInspector] private bool boneCandidatesExpanded = true;
+        [SerializeField, HideInInspector] private bool boneChainsExpanded = true;
+        [SerializeField, HideInInspector] private bool pivotGroupsExpanded = true;
+        [SerializeField, HideInInspector] private bool simulationAnchorAutomaticallyAssigned;
         [SerializeField] private List<BoneEntry> existingBones = new List<BoneEntry>();
         [SerializeField] private bool autoCreatePivot = true;
         [SerializeField] private Transform rotationPivot;
@@ -254,6 +316,9 @@ namespace Faidlix.UnityTools
         private Vector3 continuousForce;
         private Vector3 impulseVelocity;
         private float previewTime;
+        private float scheduledDeltaTime;
+        private int scheduledFrameCount;
+        private bool distanceSleeping;
         private bool initialized;
 
         public MotionSource Source { get => motionSource; set => motionSource = value; }
@@ -290,6 +355,15 @@ namespace Faidlix.UnityTools
             : endPoints;
         public List<BoneEntry> ExistingBones => existingBones;
         public List<BoneChain> BoneChains => boneChains;
+        public List<BoneChainGroup> BoneChainGroups => boneChainGroups;
+        public bool BoneCandidatesExpanded { get => boneCandidatesExpanded; set => boneCandidatesExpanded = value; }
+        public bool BoneChainsExpanded { get => boneChainsExpanded; set => boneChainsExpanded = value; }
+        public bool PivotGroupsExpanded { get => pivotGroupsExpanded; set => pivotGroupsExpanded = value; }
+        public bool SimulationAnchorAutomaticallyAssigned
+        {
+            get => simulationAnchorAutomaticallyAssigned;
+            set => simulationAnchorAutomaticallyAssigned = value;
+        }
         public SkinnedMeshRenderer DeformingRenderer { get => deformingRenderer; set => deformingRenderer = value; }
         public bool HasValidExistingBones => existingBones.Exists(entry => entry != null && entry.transform != null) ||
                                              boneChains.Exists(chain => chain != null && chain.enabled && chain.root != null);
@@ -306,7 +380,63 @@ namespace Faidlix.UnityTools
         private void OnValidate() => EnsureDataIntegrity();
         private void Start() { EnsureDataIntegrity(); EnsureRuntimePivot(); RebuildSimulation(); }
         private void OnDisable() { RestoreRestPose(); initialized = false; }
-        private void LateUpdate() { if (simulate) SimulateStep(Time.deltaTime, Vector3.zero); }
+        private void LateUpdate() { if (simulate) AdvanceScheduledSimulation(Time.deltaTime, Vector3.zero); }
+
+        private void AdvanceScheduledSimulation(float deltaTime, Vector3 additionalWorldForce)
+        {
+            if (!settings.enableDistanceSimulation)
+            {
+                SimulateStep(deltaTime, additionalWorldForce);
+                return;
+            }
+
+            int stage = GetDistanceStage();
+            if (stage >= 3)
+            {
+                if (!distanceSleeping) ResetSimulation();
+                distanceSleeping = true;
+                scheduledDeltaTime = 0f;
+                scheduledFrameCount = 0;
+                return;
+            }
+            if (distanceSleeping)
+            {
+                ResetSimulation();
+                distanceSleeping = false;
+            }
+
+            scheduledDeltaTime += Mathf.Max(0f, deltaTime);
+            if (settings.distanceUpdateMode == FDX_DistanceUpdateMode.FixedFrameInterval)
+            {
+                scheduledFrameCount++;
+                if (scheduledFrameCount < settings.GetFrameInterval(stage)) return;
+                scheduledFrameCount = 0;
+            }
+            else
+            {
+                float interval = 1f / settings.GetUpdateFrequency(stage);
+                if (scheduledDeltaTime < interval) return;
+            }
+
+            float stepDelta = scheduledDeltaTime;
+            scheduledDeltaTime = 0f;
+            SimulateStep(stepDelta, additionalWorldForce);
+        }
+
+        private int GetDistanceStage()
+        {
+            Transform reference = settings.distanceReference;
+            if (reference == null && Camera.main != null) reference = Camera.main.transform;
+            if (reference == null) return 0;
+            float first = Mathf.Max(0f, settings.fullSimulationDistance);
+            float second = Mathf.Max(first, settings.reducedSimulationDistance);
+            float third = Mathf.Max(second, settings.minimalSimulationDistance);
+            float distance = Vector3.Distance(transform.position, reference.position);
+            if (distance < first) return 0;
+            if (distance < second) return 1;
+            if (distance < third) return 2;
+            return 3;
+        }
 
         private void SimulateStep(float deltaTime, Vector3 additionalWorldForce)
         {
@@ -415,7 +545,7 @@ namespace Faidlix.UnityTools
             previewTime += deltaTime;
             Vector3 previewForce = new Vector3(Mathf.Sin(previewTime * 2.3f), 0f,
                 Mathf.Cos(previewTime * 1.7f)) * 2f;
-            SimulateStep(deltaTime, previewForce);
+            AdvanceScheduledSimulation(deltaTime, previewForce);
         }
 
         public void StopPreview()
@@ -423,6 +553,9 @@ namespace Faidlix.UnityTools
             if (Application.isPlaying) return;
             RestoreRestPose();
             previewTime = 0f;
+            scheduledDeltaTime = 0f;
+            scheduledFrameCount = 0;
+            distanceSleeping = false;
             initialized = false;
         }
 
@@ -489,12 +622,14 @@ namespace Faidlix.UnityTools
             if (pivotAxisSettings == null) pivotAxisSettings = new FDX_AxisControlSettings();
             if (pivotGroups == null) pivotGroups = new List<PivotGroup>();
             if (boneChains == null) boneChains = new List<BoneChain>();
+            if (boneChainGroups == null) boneChainGroups = new List<BoneChainGroup>();
             if (existingBones == null) existingBones = new List<BoneEntry>();
             if (endPoints == null) endPoints = new List<FlexibleEndPoint>();
             if (explicitColliders == null) explicitColliders = new List<Collider>();
             foreach (BoneChain chain in boneChains)
             {
                 if (chain == null) continue;
+                if (string.IsNullOrWhiteSpace(chain.editorId)) chain.editorId = Guid.NewGuid().ToString("N");
                 if (chain.excludedBones == null) chain.excludedBones = new List<Transform>();
                 if (chain.axisSettings == null) chain.axisSettings = new FDX_AxisControlSettings();
             }
@@ -509,6 +644,77 @@ namespace Faidlix.UnityTools
                 if (group.endPoints == null) group.endPoints = new List<FlexibleEndPoint>();
                 foreach (FlexibleEndPoint point in group.endPoints) EnsureEndPointData(point);
             }
+            settings.fullSimulationDistance = Mathf.Max(0f, settings.fullSimulationDistance);
+            settings.reducedSimulationDistance = Mathf.Max(settings.fullSimulationDistance, settings.reducedSimulationDistance);
+            settings.minimalSimulationDistance = Mathf.Max(settings.reducedSimulationDistance, settings.minimalSimulationDistance);
+            settings.customFrameIntervals = new Vector3Int(
+                Mathf.Max(1, settings.customFrameIntervals.x),
+                Mathf.Max(1, settings.customFrameIntervals.y),
+                Mathf.Max(1, settings.customFrameIntervals.z));
+            settings.customUpdateFrequencies = new Vector3(
+                Mathf.Max(1f, settings.customUpdateFrequencies.x),
+                Mathf.Max(1f, settings.customUpdateFrequencies.y),
+                Mathf.Max(1f, settings.customUpdateFrequencies.z));
+        }
+
+        public void RefreshAutomaticSimulationAnchor(bool force)
+        {
+            if (!force && simulationAnchor != null && !simulationAnchorAutomaticallyAssigned) return;
+            var roots = new List<Transform>();
+            foreach (BoneChain chain in boneChains)
+                if (chain != null && chain.enabled && chain.root != null) roots.Add(chain.root);
+            if (roots.Count == 0) return;
+            Transform common = roots[0].parent != null ? roots[0].parent : roots[0];
+            while (common != null)
+            {
+                bool containsAll = true;
+                foreach (Transform root in roots)
+                {
+                    if (root == common || root.IsChildOf(common)) continue;
+                    containsAll = false;
+                    break;
+                }
+                if (containsAll) break;
+                common = common.parent;
+            }
+            simulationAnchor = common != null ? common : transform;
+            simulationAnchorAutomaticallyAssigned = true;
+        }
+
+        public void ResetToDefaults()
+        {
+            StopPreview();
+            motionSource = MotionSource.AutomaticPivot;
+            simulate = true;
+            forceSpace = ForceSpace.World;
+            settings = new FDX_MotionSettings();
+            simulationAnchor = null;
+            simulationAnchorAutomaticallyAssigned = false;
+            boneChains = new List<BoneChain>();
+            boneChainGroups = new List<BoneChainGroup>();
+            existingBones = new List<BoneEntry>();
+            autoCreatePivot = true;
+            rotationPivot = null;
+            pivotInfluenceRadius = 0.15f;
+            pivotAxisSettings = new FDX_AxisControlSettings();
+            pivotGroups = new List<PivotGroup> { new PivotGroup { displayName = name + " 軸心" } };
+            pivotGroupDataVersion = 1;
+            enableAdvancedFlexible = false;
+            endPoints = new List<FlexibleEndPoint>();
+            enablePreciseWeights = false;
+            deformingRenderer = null;
+            explicitColliders = new List<Collider>();
+            showGizmos = true;
+            showAllInfluenceRanges = true;
+            pivotColor = new Color(0.1f, 0.85f, 1f, 0.9f);
+            endPointColor = new Color(1f, 0.55f, 0.1f, 0.9f);
+            mirrorColor = new Color(0.7f, 0.35f, 1f, 0.75f);
+            pivotGizmoRadius = 0.08f;
+            endPointGizmoRadius = 0.045f;
+            boneCandidatesExpanded = true;
+            boneChainsExpanded = true;
+            pivotGroupsExpanded = true;
+            initialized = false;
         }
 
         private void MigrateLegacyPivot()

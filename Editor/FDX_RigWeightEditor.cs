@@ -195,7 +195,7 @@ namespace Faidlix.UnityTools.Editor
             if (Application.isBatchMode) EditorApplication.Exit(0);
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.2.0")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.3.0")]
         public static void RunBatchExportPackage()
         {
             try
@@ -206,7 +206,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.2.0.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.3.0.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,
@@ -258,7 +258,7 @@ namespace Faidlix.UnityTools.Editor
             scroll = EditorGUILayout.BeginScrollView(scroll);
             EditorGUILayout.LabelField(new GUIContent("FDX 骨架與權重編輯器", "Rig & Weight Editor"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "一般物件可先用單一旋轉軸心。只有需要局部彎曲時才建立柔性尾端與自動權重；複雜模型再使用下方筆刷修正。",
+                "一般物件可先用單一旋轉軸心。只有需要局部彎曲時才建立尾端控制點與自動權重；複雜模型再使用下方筆刷修正。",
                 MessageType.Info);
 
             motion = (FDX_SecondaryMotion)EditorGUILayout.ObjectField(new GUIContent("動態元件", "Secondary Motion"), motion,
@@ -275,7 +275,7 @@ namespace Faidlix.UnityTools.Editor
 
                 using (new EditorGUI.DisabledScope(motion == null || motion.EndPoints.Count == 0))
                 {
-                    if (GUILayout.Button(new GUIContent("產生柔性骨架並自動計算權重", "Generate Rig & Weights"))) GenerateAutomaticRigAndWeights();
+                    if (GUILayout.Button(new GUIContent("產生彎曲骨架並自動計算權重", "Generate Rig & Weights"))) GenerateAutomaticRigAndWeights();
                 }
             }
 
@@ -290,7 +290,7 @@ namespace Faidlix.UnityTools.Editor
             if (rendererTarget == null || rendererTarget.sharedMesh == null || rendererTarget.bones == null ||
                 rendererTarget.bones.Length == 0)
             {
-                EditorGUILayout.HelpBox("請先指定含骨頭的 SkinnedMeshRenderer，或先產生自動柔性骨架。", MessageType.Warning);
+                EditorGUILayout.HelpBox("請先指定含骨頭的 SkinnedMeshRenderer，或先產生自動彎曲骨架。", MessageType.Warning);
                 return;
             }
 
@@ -1015,7 +1015,7 @@ namespace Faidlix.UnityTools.Editor
                 }
 
                 EditorGUILayout.Space(6f);
-                EditorGUILayout.PropertyField(enableAdvancedFlexible, new GUIContent("啟用進階柔性設定"));
+                EditorGUILayout.PropertyField(enableAdvancedFlexible, new GUIContent("啟用進階彎曲設定"));
                 if (enableAdvancedFlexible.boolValue)
                 {
                     EditorGUI.indentLevel++;
