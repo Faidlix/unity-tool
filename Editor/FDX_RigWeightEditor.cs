@@ -119,6 +119,9 @@ namespace Faidlix.UnityTools.Editor
 
                 Animator primaryAnimator = root.AddComponent<Animator>();
                 FDX_AttachmentManager manager = root.AddComponent<FDX_AttachmentManager>();
+                FDX_SecondaryMotionManager motionManager = root.GetComponent<FDX_SecondaryMotionManager>();
+                if (motionManager == null)
+                    throw new InvalidOperationException("Attachment Manager did not create its separate Secondary Motion Manager.");
                 var secondaryCharacter = new GameObject("FDX_Smoke_SecondaryCharacter");
                 secondaryCharacter.transform.SetParent(root.transform, false);
                 Animator secondaryAnimator = secondaryCharacter.AddComponent<Animator>();
@@ -192,12 +195,14 @@ namespace Faidlix.UnityTools.Editor
                     throw new InvalidOperationException("Existing bone chain did not simulate.");
                 chainMotion.StopPreview();
 
-                manager.SetAllSimulation(false);
+                if (motionManager.FindMotionComponents().Count != 2)
+                    throw new InvalidOperationException("Secondary Motion Manager did not detect every descendant motion component.");
+                motionManager.SetAllSimulation(false);
                 if (testMotion.Simulate || chainMotion.Simulate)
-                    throw new InvalidOperationException("Attachment Manager did not disable every detected motion component.");
-                manager.SetAllSimulation(true);
+                    throw new InvalidOperationException("Secondary Motion Manager did not disable every detected motion component.");
+                motionManager.SetAllSimulation(true);
                 if (!testMotion.Simulate || !chainMotion.Simulate)
-                    throw new InvalidOperationException("Attachment Manager did not enable every detected motion component.");
+                    throw new InvalidOperationException("Secondary Motion Manager did not enable every detected motion component.");
 
                 FDX_SecondaryMotion.PivotGroup replicated = testMotion.PivotGroups[0];
                 replicated.replicationMode = FDX_SecondaryMotion.PivotReplicationMode.Mirror;
@@ -219,23 +224,23 @@ namespace Faidlix.UnityTools.Editor
                 Quaternion previewStart = root.transform.localRotation;
                 Quaternion secondPreviewStart = secondPivotObject.transform.localRotation;
                 testMotion.Settings.previewAutoSway = true;
-                for (int i = 0; i < 30; i++) manager.PreviewStep(1f / 60f);
+                for (int i = 0; i < 30; i++) motionManager.PreviewStep(1f / 60f);
                 if (Quaternion.Angle(previewStart, root.transform.localRotation) < 0.001f)
                     throw new InvalidOperationException("Edit Mode Preview did not rotate the automatic motion target.");
                 if (Quaternion.Angle(secondPreviewStart, secondPivotObject.transform.localRotation) < 0.001f)
                     throw new InvalidOperationException("Multi-pivot preview did not rotate the second motion target.");
-                manager.StopPreview();
+                motionManager.StopPreview();
 
                 previewStart = root.transform.localRotation;
                 chainStart = skirtRoot.transform.localRotation;
-                for (int i = 0; i < 30; i++) manager.PreviewStep(1f / 60f, testMotion);
+                for (int i = 0; i < 30; i++) motionManager.PreviewStep(1f / 60f, testMotion);
                 if (Quaternion.Angle(previewStart, root.transform.localRotation) < 0.001f)
                     throw new InvalidOperationException("Solo preview did not simulate the selected motion component.");
                 if (Quaternion.Angle(chainStart, skirtRoot.transform.localRotation) > 0.001f)
                     throw new InvalidOperationException("Solo preview did not stop the other motion component.");
-                manager.StopPreview();
+                motionManager.StopPreview();
 
-                Debug.Log($"FDX_ATTACHMENT_MOTION_SMOKE_OK bones={result.bones.Length} vertices={result.sharedMesh.vertexCount} chains=1 animators=2 solo=1");
+                Debug.Log($"FDX_ATTACHMENT_MOTION_SMOKE_OK bones={result.bones.Length} vertices={result.sharedMesh.vertexCount} chains=1 animators=2 solo=1 manager_split=1");
             }
             catch (Exception exception)
             {
@@ -268,6 +273,9 @@ namespace Faidlix.UnityTools.Editor
                 root = new GameObject("FDX_Regression");
                 root.AddComponent<Animator>();
                 var manager = root.AddComponent<FDX_AttachmentManager>();
+                var motionManager = root.GetComponent<FDX_SecondaryMotionManager>();
+                if (motionManager == null)
+                    throw new InvalidOperationException("Attachment and motion managers were not split into separate components.");
                 var hips = new GameObject("Hips");
                 hips.transform.SetParent(root.transform, false);
                 var head = new GameObject("Head");
@@ -383,6 +391,7 @@ namespace Faidlix.UnityTools.Editor
                 standalone.RebuildSimulation();
                 motion.Simulate = true;
                 motion.Settings.previewAutoSway = true;
+                motionManager.SimulateAll = false;
                 var updatePreview = typeof(FDX_EditModePreviewDriver).GetMethod("Update",
                     System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
                 for (int i = 0; i < 30; i++) updatePreview.Invoke(null, null);
@@ -457,6 +466,11 @@ namespace Faidlix.UnityTools.Editor
                 colliderList.Add(animatedCapsule);
                 animatedColliderObject.transform.position = collisionRig.transform.position + Vector3.right * 3f;
                 collisionMotion.RebuildSimulation();
+                if (!collisionMotion.Settings.explicitColliders.Contains(animatedCapsule) || colliderList.Count != 0)
+                    throw new InvalidOperationException("Legacy collider list was not migrated into global motion settings.");
+                if (ReferenceEquals(collisionMotion.Settings.explicitColliders,
+                    collisionMotion.BoneChains[0].motionSettings.explicitColliders))
+                    throw new InvalidOperationException("Global and per-chain collider lists were not independent.");
                 collisionMotion.PreviewStep(1f / 60f);
                 animatedColliderObject.transform.position = collisionRig.transform.position + new Vector3(0.75f, 0.12f, 0f);
                 collisionMotion.PreviewStep(1f / 60f);
@@ -506,7 +520,7 @@ namespace Faidlix.UnityTools.Editor
                 if (meshObject.GetComponent<FDX_SecondaryMotion>() != null || meshObject.GetComponent<MeshRenderer>() == null ||
                     meshObject.GetComponent<SkinnedMeshRenderer>() != null)
                     throw new InvalidOperationException("Static conversion did not restore the renderer.");
-                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 collision=1 mirror=1 static=1 standalone=1 groups=1");
+                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 collision=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1");
             }
             catch (Exception exception)
             {
@@ -573,7 +587,7 @@ namespace Faidlix.UnityTools.Editor
             second = p2 + d2 * t;
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.7.0")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.8.0")]
         public static void RunBatchExportPackage()
         {
             try
@@ -584,7 +598,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.7.0.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.8.0.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,
@@ -1149,16 +1163,16 @@ namespace Faidlix.UnityTools.Editor
     [InitializeOnLoad]
     internal static class FDX_EditModePreviewDriver
     {
-        private static readonly HashSet<FDX_AttachmentManager> activeManagers =
-            new HashSet<FDX_AttachmentManager>();
-        private static readonly Dictionary<FDX_AttachmentManager, HashSet<FDX_SecondaryMotion>> managerMotions =
-            new Dictionary<FDX_AttachmentManager, HashSet<FDX_SecondaryMotion>>();
+        private static readonly HashSet<FDX_SecondaryMotionManager> activeManagers =
+            new HashSet<FDX_SecondaryMotionManager>();
+        private static readonly Dictionary<FDX_SecondaryMotionManager, HashSet<FDX_SecondaryMotion>> managerMotions =
+            new Dictionary<FDX_SecondaryMotionManager, HashSet<FDX_SecondaryMotion>>();
         private static readonly HashSet<FDX_SecondaryMotion> managedMotions = new HashSet<FDX_SecondaryMotion>();
         private static double previousTime;
         private static double nextActiveRefreshTime;
         private static bool discoveryDirty = true;
         private static readonly HashSet<FDX_SecondaryMotion> activeStandalone = new HashSet<FDX_SecondaryMotion>();
-        private static readonly List<FDX_AttachmentManager> inactiveManagers = new List<FDX_AttachmentManager>();
+        private static readonly List<FDX_SecondaryMotionManager> inactiveManagers = new List<FDX_SecondaryMotionManager>();
         private static readonly List<FDX_SecondaryMotion> inactiveStandalone = new List<FDX_SecondaryMotion>();
 
         static FDX_EditModePreviewDriver()
@@ -1187,9 +1201,9 @@ namespace Faidlix.UnityTools.Editor
             if (activeManagers.Count == 0 && activeStandalone.Count == 0) return;
 
             inactiveManagers.Clear();
-            foreach (FDX_AttachmentManager manager in activeManagers)
+            foreach (FDX_SecondaryMotionManager manager in activeManagers)
             {
-                if (manager == null || !manager.PreviewInEditMode || !manager.enabled ||
+                if (manager == null || !manager.SimulateAll || !manager.enabled ||
                     !manager.gameObject.scene.IsValid())
                 {
                     if (manager != null && managerMotions.TryGetValue(manager, out HashSet<FDX_SecondaryMotion> stopped))
@@ -1212,7 +1226,7 @@ namespace Faidlix.UnityTools.Editor
                     else motion.StopPreview();
                 }
             }
-            foreach (FDX_AttachmentManager manager in inactiveManagers) activeManagers.Remove(manager);
+            foreach (FDX_SecondaryMotionManager manager in inactiveManagers) activeManagers.Remove(manager);
             inactiveStandalone.Clear();
             foreach (FDX_SecondaryMotion motion in activeStandalone)
             {
@@ -1233,22 +1247,22 @@ namespace Faidlix.UnityTools.Editor
         {
             discoveryDirty = false;
             nextActiveRefreshTime = now + 1d;
-            var previousManagers = new HashSet<FDX_AttachmentManager>(activeManagers);
+            var previousManagers = new HashSet<FDX_SecondaryMotionManager>(activeManagers);
             var previousStandalone = new HashSet<FDX_SecondaryMotion>(activeStandalone);
             activeManagers.Clear();
             activeStandalone.Clear();
             managerMotions.Clear();
             managedMotions.Clear();
 
-            foreach (FDX_AttachmentManager manager in Resources.FindObjectsOfTypeAll<FDX_AttachmentManager>())
+            foreach (FDX_SecondaryMotionManager manager in Resources.FindObjectsOfTypeAll<FDX_SecondaryMotionManager>())
             {
                 if (manager == null || !manager.isActiveAndEnabled || !manager.gameObject.scene.IsValid()) continue;
-                var motions = new HashSet<FDX_SecondaryMotion>(manager.FindAllMotionComponents());
+                var motions = new HashSet<FDX_SecondaryMotion>(manager.FindMotionComponents());
                 managerMotions[manager] = motions;
                 managedMotions.UnionWith(motions);
-                if (manager.PreviewInEditMode) activeManagers.Add(manager);
+                if (manager.SimulateAll) activeManagers.Add(manager);
             }
-            foreach (FDX_AttachmentManager previous in previousManagers)
+            foreach (FDX_SecondaryMotionManager previous in previousManagers)
                 if (previous != null && !activeManagers.Contains(previous)) previous.StopPreview();
 
             foreach (FDX_SecondaryMotion motion in Resources.FindObjectsOfTypeAll<FDX_SecondaryMotion>())
@@ -1270,7 +1284,7 @@ namespace Faidlix.UnityTools.Editor
             if (state == PlayModeStateChange.ExitingEditMode) StopAll();
         }
 
-        internal static void Deactivate(FDX_AttachmentManager manager)
+        internal static void Deactivate(FDX_SecondaryMotionManager manager)
         {
             if (manager != null && managerMotions.TryGetValue(manager, out HashSet<FDX_SecondaryMotion> motions))
                 foreach (FDX_SecondaryMotion motion in motions) if (motion != null) motion.StopPreview();
@@ -1282,7 +1296,7 @@ namespace Faidlix.UnityTools.Editor
 
         private static void StopAll()
         {
-            foreach (FDX_AttachmentManager manager in activeManagers)
+            foreach (FDX_SecondaryMotionManager manager in activeManagers)
                 if (manager != null) manager.StopPreview();
             activeManagers.Clear();
             managerMotions.Clear();

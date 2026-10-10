@@ -14,47 +14,54 @@ namespace Faidlix.UnityTools.Editor
         public static void DrawMotionSettings(SerializedProperty property)
         {
             SerializedProperty perAxis = property.FindPropertyRelative("perAxisSettings");
-            EditorGUILayout.PropertyField(perAxis, C("各軸獨立設定", "Per-Axis Settings"));
+            EditorGUILayout.PropertyField(perAxis, C("各軸獨立設定", "分別設定 X、Y、Z 三個旋轉軸的慣性、彈力、阻尼與最大角度。"));
             if (perAxis.boolValue)
             {
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertiaPerAxis"), C("慣性 XYZ", "Inertia"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("springPerAxis"), C("彈力 XYZ", "Spring"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("dampingPerAxis"), C("阻尼 XYZ", "Damping"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("maxAnglePerAxis"), C("最大角度 XYZ", "Max Angle"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertiaPerAxis"), C("慣性 XYZ", "各軸保留移動慣性的程度；數值越大，動作帶出的擺動越明顯。"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("springPerAxis"), C("彈力 XYZ", "各軸回到動畫基準姿勢的力量；數值越大，回正越快。"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("dampingPerAxis"), C("阻尼 XYZ", "各軸消除擺動速度的程度；數值越大，擺動越快停止。"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("maxAnglePerAxis"), C("最大角度 XYZ", "各軸可疊加在原動畫上的最大擺動角度。"));
             }
             else
             {
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertia"), C("慣性", "Inertia"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("spring"), C("彈力", "Spring"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("damping"), C("阻尼", "Damping"));
-                EditorGUILayout.Slider(property.FindPropertyRelative("maxAngle"), 0f, 180f, C("最大角度", "Max Angle"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("inertia"), C("慣性", "保留移動慣性的程度；數值越大，動作帶出的擺動越明顯。"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("spring"), C("彈力", "回到動畫基準姿勢的力量；數值越大，回正越快。"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("damping"), C("阻尼", "消除擺動速度的程度；數值越大，擺動越快停止。"));
+                EditorGUILayout.Slider(property.FindPropertyRelative("maxAngle"), 0f, 180f, C("最大角度", "擺動可以疊加在原動畫上的最大角度。"));
             }
 
             EditorGUILayout.Slider(property.FindPropertyRelative("animationBlend"), 0f, 1f,
-                C("動畫混合", "Animation Blend"));
+                C("擺動疊加程度", "0 只保留原動畫，1 在原動畫上完整疊加模擬擺動。"));
             EditorGUILayout.IntSlider(property.FindPropertyRelative("substeps"), 1, 4,
-                C("模擬子步進", "Substeps"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityStrength"), C("重力強度", "Gravity Strength"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityDirection"), C("重力方向", "Gravity Direction"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("constantWind"), C("固定風力", "Constant Wind"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("windMultiplier"), C("風力倍率", "Wind Multiplier"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("teleportDistance"), C("瞬移判定距離", "Teleport Distance"));
-            EditorGUILayout.PropertyField(property.FindPropertyRelative("maxDeltaTime"), C("最大更新間隔", "Max Delta Time"));
+                C("每幀物理計算次數", "每個畫面幀內執行 1～4 次模擬；越高越穩定且較不易穿透，但會增加運算量。"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityStrength"), C("重力強度", "施加到擺動物件的重力強度；0 代表不受重力影響。"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("gravityDirection"), C("重力方向", "重力作用方向；會依上方選擇的力場座標解讀。"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("constantWind"), C("固定風力", "持續施加的風力方向與大小。"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("windMultiplier"), C("風力倍率", "放大或縮小固定風力的效果。"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("teleportDistance"), C("瞬移重設距離", "動作參考物件單次移動超過此距離時，清除速度與慣性，避免瞬移造成猛烈甩動。"));
+            EditorGUILayout.PropertyField(property.FindPropertyRelative("maxDeltaTime"), C("最大更新間隔", "限制單次模擬採用的時間長度，避免卡頓或低幀率造成不穩定。"));
 
             EditorGUILayout.Space(4f);
-            EditorGUILayout.LabelField(C("碰撞", "Collision"), EditorStyles.boldLabel);
             SerializedProperty enableCollision = property.FindPropertyRelative("enableCollision");
-            EditorGUILayout.PropertyField(enableCollision, C("啟用碰撞", "Enable Collision"));
+            EditorGUILayout.PropertyField(enableCollision, C("啟用碰撞", "讓這組骨架使用碰撞半徑避開指定碰撞器與碰撞圖層中的 Collider。"));
             if (enableCollision.boolValue)
             {
-                EditorGUI.indentLevel++;
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionLayers"), C("碰撞圖層", "Collision Layers"));
+                SerializedProperty colliders = property.FindPropertyRelative("explicitColliders");
+                SerializedProperty collidersExpanded = property.FindPropertyRelative("collidersExpanded");
+                collidersExpanded.boolValue = EditorGUILayout.Foldout(collidersExpanded.boolValue,
+                    C($"碰撞體（{colliders.arraySize}）", "展開並指定這組動態設定一定要檢查的 Collider。"), true);
+                if (collidersExpanded.boolValue)
+                {
+                    EditorGUI.indentLevel++;
+                    EditorGUILayout.PropertyField(colliders, C("指定碰撞器", "不受碰撞圖層搜尋限制，固定納入此組擺動的碰撞計算。"), true);
+                    EditorGUI.indentLevel--;
+                }
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionLayers"), C("碰撞圖層", "自動搜尋碰撞器時要包含的 Unity Layer。"));
                 EditorGUILayout.Slider(property.FindPropertyRelative("collisionRadius"), 0.001f, 2f,
-                    C("碰撞半徑", "Collision Radius"));
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionStrength"), C("碰撞強度", "Collision Strength"));
+                    C("碰撞半徑", "骨架每一段周圍用來偵測及推出碰撞的半徑。"));
+                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionStrength"), C("碰撞強度", "碰撞修正影響擺動速度的強度；硬性防穿透仍會保持生效。"));
                 EditorGUILayout.Slider(property.FindPropertyRelative("collisionFriction"), 0f, 1f,
-                    C("碰撞摩擦力", "Collision Friction"));
-                EditorGUI.indentLevel--;
+                    C("碰撞摩擦力", "碰撞時消除切向擺動速度的比例；1 最快停止滑動。"));
             }
 
             DrawDistanceSettings(property);
@@ -64,27 +71,27 @@ namespace Faidlix.UnityTools.Editor
         {
             EditorGUILayout.Space(5f);
             SerializedProperty enabled = property.FindPropertyRelative("enableDistanceSimulation");
-            EditorGUILayout.PropertyField(enabled, C("距離模擬設定", "Distance Simulation Settings"));
+            EditorGUILayout.PropertyField(enabled, C("距離模擬設定", "依觀察距離降低更新次數，遠處可停止模擬以節省效能。"));
             if (!enabled.boolValue) return;
             EditorGUI.indentLevel++;
             EditorGUILayout.PropertyField(property.FindPropertyRelative("useSceneViewCameraInEditMode"),
-                C("編輯模式使用場景視角", "Use Scene view camera while previewing outside Play Mode"));
+                C("編輯模式使用場景視角", "非播放模式預覽時，以目前 Scene 視角判斷距離。"));
             SerializedProperty distanceReference = property.FindPropertyRelative("distanceReference");
             if (distanceReference.objectReferenceValue == null && Camera.main != null)
                 distanceReference.objectReferenceValue = Camera.main.transform;
             EditorGUILayout.PropertyField(distanceReference,
-                C("距離參考物件", "Distance Reference; automatically uses Main Camera"));
+                C("距離參考物件", "以此物件到擺動物件的距離決定更新品質；未指定時使用 Main Camera。"));
 
             SerializedProperty mode = property.FindPropertyRelative("distanceUpdateMode");
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.PrefixLabel(C("更新方式", "Update Mode"));
+            EditorGUILayout.PrefixLabel(C("更新方式", "選擇以每幾幀一次，或固定每秒次數降低遠距離模擬。"));
             DrawExclusiveEnum(mode, (int)FDX_DistanceUpdateMode.FixedFrameInterval, "固定幀間隔", "Fixed Frame Interval");
             DrawExclusiveEnum(mode, (int)FDX_DistanceUpdateMode.FixedUpdateFrequency, "固定更新頻率", "Fixed Update Frequency");
             EditorGUILayout.EndHorizontal();
 
             SerializedProperty quality = property.FindPropertyRelative("distanceQuality");
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.PrefixLabel(C("畫質設定", "Quality Preset"));
+            EditorGUILayout.PrefixLabel(C("畫質設定", "快速套用不同距離區間的模擬更新品質。"));
             DrawExclusiveEnum(quality, (int)FDX_DistanceQuality.Low, "低", "Low");
             DrawExclusiveEnum(quality, (int)FDX_DistanceQuality.Medium, "中", "Medium");
             DrawExclusiveEnum(quality, (int)FDX_DistanceQuality.High, "高", "High");
@@ -105,7 +112,7 @@ namespace Faidlix.UnityTools.Editor
             DrawDistanceBar(mode.enumValueIndex, frameValues, frequencyValues, first, second, third);
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.PrefixLabel(C("距離分界（公尺）", "Distance Thresholds In Meters"));
+            EditorGUILayout.PrefixLabel(C("距離分界（公尺）", "依序設定完整、降低、最低品質與停止模擬的距離分界。"));
             first.floatValue = Mathf.Max(0f, EditorGUILayout.FloatField(first.floatValue));
             second.floatValue = Mathf.Max(first.floatValue, EditorGUILayout.FloatField(second.floatValue));
             third.floatValue = Mathf.Max(second.floatValue, EditorGUILayout.FloatField(third.floatValue));
@@ -118,7 +125,7 @@ namespace Faidlix.UnityTools.Editor
                     SerializedProperty custom = property.FindPropertyRelative("customFrameIntervals");
                     Vector3Int value = custom.vector3IntValue;
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.PrefixLabel(C("自訂幀間隔", "Custom Frame Intervals"));
+                    EditorGUILayout.PrefixLabel(C("自訂幀間隔", "三個距離區間分別每幾幀執行一次模擬。"));
                     value.x = Mathf.Max(1, EditorGUILayout.IntField(value.x));
                     value.y = Mathf.Max(1, EditorGUILayout.IntField(value.y));
                     value.z = Mathf.Max(1, EditorGUILayout.IntField(value.z));
@@ -130,14 +137,14 @@ namespace Faidlix.UnityTools.Editor
                     SerializedProperty custom = property.FindPropertyRelative("customUpdateFrequencies");
                     Vector3 value = custom.vector3Value;
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.PrefixLabel(C("每秒更新次數", "Updates Per Second"));
+                    EditorGUILayout.PrefixLabel(C("每秒更新次數", "三個距離區間每秒分別執行幾次模擬。"));
                     value.x = Mathf.Max(1f, EditorGUILayout.FloatField(value.x));
                     value.y = Mathf.Max(1f, EditorGUILayout.FloatField(value.y));
                     value.z = Mathf.Max(1f, EditorGUILayout.FloatField(value.z));
                     EditorGUILayout.EndHorizontal();
                     custom.vector3Value = value;
                 }
-                if (GUILayout.Button(C("儲存自訂預設", "Save Custom Preset"))) GUI.FocusControl(null);
+                if (GUILayout.Button(C("儲存自訂預設", "保留目前輸入的自訂距離更新數值。"))) GUI.FocusControl(null);
             }
             EditorGUI.indentLevel--;
         }
@@ -293,6 +300,73 @@ namespace Faidlix.UnityTools.Editor
         }
     }
 
+    [CustomEditor(typeof(FDX_SecondaryMotionManager))]
+    internal sealed class FDX_SecondaryMotionManagerInspector : UnityEditor.Editor
+    {
+        private SerializedProperty simulateAll;
+        private SerializedProperty motionListExpanded;
+
+        private void OnEnable()
+        {
+            simulateAll = serializedObject.FindProperty("simulateAll");
+            motionListExpanded = serializedObject.FindProperty("motionListExpanded");
+            EditorApplication.hierarchyChanged += Repaint;
+            FDX_EditModePreviewDriver.InvalidateDiscovery();
+        }
+
+        private void OnDisable()
+        {
+            EditorApplication.hierarchyChanged -= Repaint;
+            FDX_EditModePreviewDriver.InvalidateDiscovery();
+        }
+
+        public override void OnInspectorGUI()
+        {
+            serializedObject.Update();
+            var manager = (FDX_SecondaryMotionManager)target;
+            List<FDX_SecondaryMotion> motions = manager.FindMotionComponents();
+
+            EditorGUI.BeginChangeCheck();
+            EditorGUILayout.PropertyField(simulateAll,
+                new GUIContent("全域模擬擺動", "一次開啟或關閉這個物件階層下所有 FDX Secondary Motion 的模擬與編輯模式預覽。"));
+            if (EditorGUI.EndChangeCheck())
+            {
+                serializedObject.ApplyModifiedProperties();
+                if (motions.Count > 0) Undo.RecordObjects(motions.ToArray(), "Toggle All FDX Motion");
+                manager.SetAllSimulation(manager.SimulateAll);
+                if (!manager.SimulateAll) manager.StopPreview();
+                EditorUtility.SetDirty(manager);
+                FDX_EditModePreviewDriver.InvalidateDiscovery();
+                serializedObject.Update();
+            }
+
+            motionListExpanded.boolValue = EditorGUILayout.Foldout(motionListExpanded.boolValue,
+                new GUIContent($"擺動物件（{motions.Count}）", "顯示目前階層下所有掛有 FDX Secondary Motion 的物件。"), true);
+            if (motionListExpanded.boolValue)
+            {
+                if (motions.Count == 0)
+                    EditorGUILayout.HelpBox("目前階層下沒有掛載擺動腳本的物件。", MessageType.None);
+                foreach (FDX_SecondaryMotion motion in motions)
+                {
+                    EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+                    EditorGUI.BeginDisabledGroup(true);
+                    EditorGUILayout.Toggle(motion.Simulate, GUILayout.Width(18f));
+                    EditorGUI.EndDisabledGroup();
+                    EditorGUI.BeginDisabledGroup(true);
+                    EditorGUILayout.ObjectField(motion.gameObject, typeof(GameObject), true);
+                    EditorGUI.EndDisabledGroup();
+                    if (GUILayout.Button(new GUIContent("跳到物件", "在 Hierarchy 與 Scene View 選取這個擺動物件。"), GUILayout.Width(82f)))
+                    {
+                        Selection.activeGameObject = motion.gameObject;
+                        EditorGUIUtility.PingObject(motion.gameObject);
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
+            }
+            serializedObject.ApplyModifiedProperties();
+        }
+    }
+
     [CustomEditor(typeof(FDX_AttachmentManager))]
     internal sealed class FDX_AttachmentManagerBilingualInspector : UnityEditor.Editor
     {
@@ -328,6 +402,12 @@ namespace Faidlix.UnityTools.Editor
 
         private void OnEnable()
         {
+            var manager = (FDX_AttachmentManager)target;
+            if (!Application.isPlaying && manager.GetComponent<FDX_SecondaryMotionManager>() == null)
+            {
+                Undo.AddComponent<FDX_SecondaryMotionManager>(manager.gameObject);
+                EditorUtility.SetDirty(manager.gameObject);
+            }
             animator = serializedObject.FindProperty("animator");
             additionalAnimators = serializedObject.FindProperty("additionalAnimators");
             attachments = serializedObject.FindProperty("attachments");
@@ -362,6 +442,7 @@ namespace Faidlix.UnityTools.Editor
             var manager = (FDX_AttachmentManager)target;
             manager.RefreshAutomaticAnimator();
             serializedObject.UpdateIfRequiredOrScript();
+            EditorGUILayout.LabelField(new GUIContent("裝備掛載", "管理裝備來源、掛點與掛載位置；擺動的全域開關與物件清單由 Secondary Motion Manager 管理。"), EditorStyles.boldLabel);
             settingsMode.enumValueIndex = applySharedSettingsOnAttach.boolValue
                 ? (int)FDX_AttachmentManager.MotionSettingsMode.Unified
                 : (int)FDX_AttachmentManager.MotionSettingsMode.PerAttachment;
@@ -376,20 +457,6 @@ namespace Faidlix.UnityTools.Editor
                 GUIUtility.ExitGUI();
             }
             DrawManagedAnimators(manager);
-            EditorGUI.BeginChangeCheck();
-            EditorGUILayout.PropertyField(previewInEditMode, new GUIContent("即時模擬擺動", "Live Motion Preview"));
-            if (EditorGUI.EndChangeCheck())
-            {
-                serializedObject.ApplyModifiedProperties();
-                if (!manager.PreviewInEditMode)
-                {
-                    manager.StopPreview();
-                    FDX_EditModePreviewDriver.Deactivate(manager);
-                }
-                EditorUtility.SetDirty(manager);
-                FDX_EditModePreviewDriver.InvalidateDiscovery();
-                serializedObject.Update();
-            }
             EditorGUI.BeginChangeCheck();
             DrawAttachments();
             serializedObject.ApplyModifiedProperties();
@@ -482,7 +549,6 @@ namespace Faidlix.UnityTools.Editor
                     EditorGUILayout.HelpBox("目前沒有符合此分類的不可裝備物件。", MessageType.None);
             }
 
-            if (showDynamic) DrawSharedSettings(manager, cachedAllMotions);
         }
 
         private void RefreshEquipmentCache(FDX_AttachmentManager manager)
@@ -1790,8 +1856,6 @@ namespace Faidlix.UnityTools.Editor
 
             DrawCentralMotionSettings(motion);
 
-            EditorGUILayout.Space(6f);
-            EditorGUILayout.PropertyField(explicitColliders, new GUIContent("指定碰撞器", "Explicit Colliders"), true);
             DrawGizmos();
             serializedObject.ApplyModifiedProperties();
             if (GUI.changed)
@@ -1813,7 +1877,7 @@ namespace Faidlix.UnityTools.Editor
             if (!motionSettingsExpanded.boolValue) return;
 
             globalMotionSettingsExpanded.boolValue = FDX_InspectorGUI.DrawContainedFoldout(
-                globalMotionSettingsExpanded.boolValue, new GUIContent("全域動態設定", "Global Motion Settings"));
+                globalMotionSettingsExpanded.boolValue, new GUIContent("全域動態設定", "Global Motion Settings"), 36f);
             if (globalMotionSettingsExpanded.boolValue)
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -1852,7 +1916,7 @@ namespace Faidlix.UnityTools.Editor
                 string name = chain.FindPropertyRelative("displayName").stringValue;
                 expanded.boolValue = FDX_InspectorGUI.DrawContainedFoldout(expanded.boolValue,
                     new GUIContent((string.IsNullOrWhiteSpace(name) ? $"骨架鏈 {i + 1}" : name) + " 動態設定",
-                        "Individual Motion Settings"));
+                        "Individual Motion Settings"), 36f);
                 if (!expanded.boolValue) continue;
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 FDX_InspectorGUI.DrawMotionSettings(chain.FindPropertyRelative("motionSettings"));

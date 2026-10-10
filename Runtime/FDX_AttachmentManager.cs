@@ -7,6 +7,7 @@ namespace Faidlix.UnityTools
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(9000)]
     [AddComponentMenu("FDX/Attachment Motion/Attachment Manager")]
+    [RequireComponent(typeof(FDX_SecondaryMotionManager))]
     public sealed class FDX_AttachmentManager : MonoBehaviour
     {
         public enum MotionSettingsMode

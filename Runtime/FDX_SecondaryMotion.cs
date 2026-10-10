@@ -33,6 +33,8 @@ namespace Faidlix.UnityTools
         [Min(0.001f)] public float collisionRadius = 0.03f;
         [Min(0f)] public float collisionStrength = 20f;
         [Range(0f, 1f)] public float collisionFriction = 0.2f;
+        public List<Collider> explicitColliders = new List<Collider>();
+        [HideInInspector] public bool collidersExpanded;
         public bool enableDistanceSimulation = true;
         public bool useSceneViewCameraInEditMode = true;
         public Transform distanceReference;
@@ -75,6 +77,10 @@ namespace Faidlix.UnityTools
             collisionRadius = other.collisionRadius;
             collisionStrength = other.collisionStrength;
             collisionFriction = other.collisionFriction;
+            explicitColliders = other.explicitColliders != null
+                ? new List<Collider>(other.explicitColliders)
+                : new List<Collider>();
+            collidersExpanded = other.collidersExpanded;
             enableDistanceSimulation = other.enableDistanceSimulation;
             useSceneViewCameraInEditMode = other.useSceneViewCameraInEditMode;
             distanceReference = other.distanceReference;
@@ -308,7 +314,7 @@ namespace Faidlix.UnityTools
         [HideInInspector, SerializeField] private SkinnedMeshRenderer automaticMultiPivotRenderer;
         [HideInInspector, SerializeField] private Material[] originalMeshMaterials = Array.Empty<Material>();
         [HideInInspector, SerializeField] private bool originalMeshRendererEnabled = true;
-        [SerializeField] private List<Collider> explicitColliders = new List<Collider>();
+        [SerializeField, HideInInspector] private List<Collider> explicitColliders = new List<Collider>();
         [SerializeField] private bool showGizmos = true;
         [SerializeField] private bool showAllInfluenceRanges = true;
         [SerializeField] private bool showCollisionRadiusGizmos = true;
@@ -767,6 +773,14 @@ namespace Faidlix.UnityTools
             if (existingBones == null) existingBones = new List<BoneEntry>();
             if (endPoints == null) endPoints = new List<FlexibleEndPoint>();
             if (explicitColliders == null) explicitColliders = new List<Collider>();
+            if (settings.explicitColliders == null) settings.explicitColliders = new List<Collider>();
+            if (explicitColliders.Count > 0)
+            {
+                foreach (Collider collider in explicitColliders)
+                    if (collider != null && !settings.explicitColliders.Contains(collider))
+                        settings.explicitColliders.Add(collider);
+                explicitColliders.Clear();
+            }
             foreach (BoneChain chain in boneChains)
             {
                 if (chain == null) continue;
@@ -775,6 +789,8 @@ namespace Faidlix.UnityTools
                 if (chain.excludedBones == null) chain.excludedBones = new List<Transform>();
                 if (chain.axisSettings == null) chain.axisSettings = new FDX_AxisControlSettings();
                 if (chain.motionSettings == null) chain.motionSettings = new FDX_MotionSettings();
+                if (chain.motionSettings.explicitColliders == null)
+                    chain.motionSettings.explicitColliders = new List<Collider>();
             }
             foreach (BoneEntry entry in existingBones)
                 if (entry != null && entry.axisSettings == null) entry.axisSettings = new FDX_AxisControlSettings();
@@ -1209,7 +1225,7 @@ namespace Faidlix.UnityTools
             FDX_MotionSettings activeSettings)
         {
             collisionCandidates.Clear();
-            foreach (Collider col in explicitColliders)
+            foreach (Collider col in activeSettings.explicitColliders)
                 if (IsUsableCollider(col)) collisionCandidates.Add(col);
             int count = Physics.OverlapCapsuleNonAlloc(start, end, activeSettings.collisionRadius, collisionBuffer,
                 activeSettings.collisionLayers, QueryTriggerInteraction.Ignore);
