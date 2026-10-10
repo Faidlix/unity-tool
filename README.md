@@ -37,7 +37,7 @@ Unity 角色配件掛載、自然慣性擺動與快速彎曲蒙皮工具。支�
 
 ### `.unitypackage`
 
-下載 Release 中的 `FDX_AttachmentMotion-1.6.0.unitypackage`，再以 Unity 匯入。
+下載 Release 中的 `FDX_AttachmentMotion-1.7.0.unitypackage`，再以 Unity 匯入。
 
 ## 快速開始
 

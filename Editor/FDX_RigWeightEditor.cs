@@ -420,6 +420,55 @@ namespace Faidlix.UnityTools.Editor
                 if (Quaternion.Angle(individualBone.transform.localRotation, Quaternion.identity) < 0.01f)
                     throw new InvalidOperationException("Individual bone-chain motion settings were not used by the simulation.");
 
+                var collisionRig = new GameObject("CollisionRegression");
+                collisionRig.transform.SetParent(root.transform, false);
+                collisionRig.transform.localPosition = Vector3.right * 4f;
+                var collisionBone = new GameObject("CollisionBone");
+                collisionBone.transform.SetParent(collisionRig.transform, false);
+                var collisionTip = new GameObject("CollisionTip");
+                collisionTip.transform.SetParent(collisionBone.transform, false);
+                collisionTip.transform.localPosition = Vector3.right;
+                var animatedColliderObject = new GameObject("AnimatedCapsuleCollider");
+                animatedColliderObject.transform.SetParent(root.transform, false);
+                animatedColliderObject.transform.localRotation = Quaternion.Euler(0f, 0f, 20f);
+                animatedColliderObject.transform.localScale = new Vector3(1.2f, 0.9f, 1.1f);
+                var animatedCapsule = animatedColliderObject.AddComponent<CapsuleCollider>();
+                animatedCapsule.direction = 1;
+                animatedCapsule.height = 0.4f;
+                animatedCapsule.radius = 0.12f;
+                var collisionMotion = collisionRig.AddComponent<FDX_SecondaryMotion>();
+                collisionMotion.Source = FDX_SecondaryMotion.MotionSource.ExistingBones;
+                collisionMotion.Settings.gravityStrength = 0f;
+                collisionMotion.Settings.constantWind = Vector3.zero;
+                collisionMotion.Settings.enableDistanceSimulation = false;
+                collisionMotion.Settings.enableCollision = true;
+                collisionMotion.Settings.collisionRadius = 0.08f;
+                collisionMotion.Settings.maxAngle = 120f;
+                collisionMotion.Settings.collisionFriction = 1f;
+                collisionMotion.BoneChains.Add(new FDX_SecondaryMotion.BoneChain
+                {
+                    displayName = "Collision Chain",
+                    root = collisionBone.transform,
+                    includeChildBones = false
+                });
+                var colliderField = typeof(FDX_SecondaryMotion).GetField("explicitColliders",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var colliderList = (List<Collider>)colliderField.GetValue(collisionMotion);
+                colliderList.Add(animatedCapsule);
+                animatedColliderObject.transform.position = collisionRig.transform.position + Vector3.right * 3f;
+                collisionMotion.RebuildSimulation();
+                collisionMotion.PreviewStep(1f / 60f);
+                animatedColliderObject.transform.position = collisionRig.transform.position + new Vector3(0.75f, 0.12f, 0f);
+                collisionMotion.PreviewStep(1f / 60f);
+                Vector3 collisionEnd = collisionBone.transform.position + collisionBone.transform.right;
+                float clearance = DistanceSegmentToCapsuleAxis(collisionBone.transform.position, collisionEnd, animatedCapsule);
+                Vector3 colliderScale = animatedCapsule.transform.lossyScale;
+                float capsuleRadius = animatedCapsule.radius * Mathf.Max(Mathf.Abs(colliderScale.x), Mathf.Abs(colliderScale.z));
+                if (clearance < capsuleRadius + collisionMotion.Settings.collisionRadius - 0.02f)
+                    throw new InvalidOperationException("Animated capsule still penetrated the full bone collision radius.");
+                if (Quaternion.Angle(collisionBone.transform.localRotation, Quaternion.identity) < 0.01f)
+                    throw new InvalidOperationException("Animated collider did not produce a hard collision response.");
+
                 var meshObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 meshObject.name = "MirroredEquipment";
                 meshObject.transform.SetParent(root.transform, false);
@@ -457,7 +506,7 @@ namespace Faidlix.UnityTools.Editor
                 if (meshObject.GetComponent<FDX_SecondaryMotion>() != null || meshObject.GetComponent<MeshRenderer>() == null ||
                     meshObject.GetComponent<SkinnedMeshRenderer>() != null)
                     throw new InvalidOperationException("Static conversion did not restore the renderer.");
-                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 mirror=1 static=1 standalone=1 groups=1");
+                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 collision=1 mirror=1 static=1 standalone=1 groups=1");
             }
             catch (Exception exception)
             {
@@ -474,7 +523,57 @@ namespace Faidlix.UnityTools.Editor
             if (Application.isBatchMode) EditorApplication.Exit(0);
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.5.0")]
+        private static float DistanceSegmentToCapsuleAxis(Vector3 segmentStart, Vector3 segmentEnd,
+            CapsuleCollider capsule)
+        {
+            Vector3 scale = capsule.transform.lossyScale;
+            Vector3 localAxis = capsule.direction == 0 ? Vector3.right : capsule.direction == 1 ? Vector3.up : Vector3.forward;
+            float axisScale = capsule.direction == 0 ? Mathf.Abs(scale.x) :
+                capsule.direction == 1 ? Mathf.Abs(scale.y) : Mathf.Abs(scale.z);
+            float radialScale = capsule.direction == 0 ? Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)) :
+                capsule.direction == 1 ? Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z)) :
+                Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y));
+            float worldRadius = capsule.radius * radialScale;
+            float halfLine = Mathf.Max(0f, capsule.height * axisScale * 0.5f - worldRadius);
+            Vector3 center = capsule.transform.TransformPoint(capsule.center);
+            Vector3 axis = capsule.transform.TransformDirection(localAxis).normalized;
+            ClosestPointsOnSegments(segmentStart, segmentEnd, center - axis * halfLine, center + axis * halfLine,
+                out Vector3 first, out Vector3 second);
+            return Vector3.Distance(first, second);
+        }
+
+        private static void ClosestPointsOnSegments(Vector3 p1, Vector3 q1, Vector3 p2, Vector3 q2,
+            out Vector3 first, out Vector3 second)
+        {
+            Vector3 d1 = q1 - p1;
+            Vector3 d2 = q2 - p2;
+            Vector3 r = p1 - p2;
+            float a = Vector3.Dot(d1, d1);
+            float e = Vector3.Dot(d2, d2);
+            float f = Vector3.Dot(d2, r);
+            float s;
+            float t;
+            if (a <= 0.000001f && e <= 0.000001f) { first = p1; second = p2; return; }
+            if (a <= 0.000001f) { s = 0f; t = Mathf.Clamp01(f / e); }
+            else
+            {
+                float c = Vector3.Dot(d1, r);
+                if (e <= 0.000001f) { t = 0f; s = Mathf.Clamp01(-c / a); }
+                else
+                {
+                    float b = Vector3.Dot(d1, d2);
+                    float denominator = a * e - b * b;
+                    s = denominator != 0f ? Mathf.Clamp01((b * f - c * e) / denominator) : 0f;
+                    t = (b * s + f) / e;
+                    if (t < 0f) { t = 0f; s = Mathf.Clamp01(-c / a); }
+                    else if (t > 1f) { t = 1f; s = Mathf.Clamp01((b - c) / a); }
+                }
+            }
+            first = p1 + d1 * s;
+            second = p2 + d2 * t;
+        }
+
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.7.0")]
         public static void RunBatchExportPackage()
         {
             try
@@ -485,7 +584,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.5.0.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.7.0.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,

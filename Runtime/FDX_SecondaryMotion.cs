@@ -311,10 +311,12 @@ namespace Faidlix.UnityTools
         [SerializeField] private List<Collider> explicitColliders = new List<Collider>();
         [SerializeField] private bool showGizmos = true;
         [SerializeField] private bool showAllInfluenceRanges = true;
+        [SerializeField] private bool showCollisionRadiusGizmos = true;
         [SerializeField] private Color pivotColor = new Color(0.1f, 0.85f, 1f, 0.9f);
         [SerializeField] private Color endPointColor = new Color(1f, 0.55f, 0.1f, 0.9f);
         [SerializeField] private Color mirrorColor = new Color(0.7f, 0.35f, 1f, 0.75f);
         [SerializeField] private Color boneRootColor = new Color(0.2f, 1f, 0.45f, 0.95f);
+        [SerializeField] private Color collisionRadiusColor = new Color(1f, 0.25f, 0.05f, 0.95f);
         [SerializeField, Min(0.001f)] private float pivotGizmoRadius = 0.08f;
         [SerializeField, Min(0.001f)] private float endPointGizmoRadius = 0.045f;
 
@@ -331,6 +333,8 @@ namespace Faidlix.UnityTools
             public Transform simulationAnchor;
             public Vector3 angle;
             public Vector3 angularVelocity;
+            public Vector3 previousTipPosition;
+            public bool collisionTipInitialized;
         }
 
         private sealed class AnchorState
@@ -346,7 +350,8 @@ namespace Faidlix.UnityTools
 
         private readonly List<NodeState> nodeStates = new List<NodeState>();
         private readonly Dictionary<Transform, AnchorState> anchorStates = new Dictionary<Transform, AnchorState>();
-        private readonly Collider[] collisionBuffer = new Collider[32];
+        private readonly Collider[] collisionBuffer = new Collider[128];
+        private readonly HashSet<Collider> collisionCandidates = new HashSet<Collider>();
         private Vector3 previousAnchorPosition;
         private Vector3 previousAnchorVelocity;
         private Vector3 continuousForce;
@@ -499,6 +504,9 @@ namespace Faidlix.UnityTools
             float frameDt = Mathf.Min(deltaTime, settings.maxDeltaTime);
             if (frameDt <= 0f) return;
 
+            if (nodeStates.Exists(state => (state.motionSettings ?? settings).enableCollision))
+                Physics.SyncTransforms();
+
             impulseVelocity = Vector3.MoveTowards(impulseVelocity, Vector3.zero, frameDt * settings.damping);
             UpdateAnchorStates(frameDt);
             int steps = Mathf.Clamp(settings.substeps, 1, 4);
@@ -572,6 +580,7 @@ namespace Faidlix.UnityTools
                 state.lastAppliedLocalRotation = state.restLocalRotation *
                                                  Quaternion.Euler(state.angle * activeSettings.animationBlend);
                 state.target.localRotation = state.lastAppliedLocalRotation;
+                ResolveCollisionConstraint(state, activeSettings, axisSettings, maxAngle);
             }
         }
 
@@ -847,10 +856,12 @@ namespace Faidlix.UnityTools
             explicitColliders = new List<Collider>();
             showGizmos = true;
             showAllInfluenceRanges = true;
+            showCollisionRadiusGizmos = true;
             pivotColor = new Color(0.1f, 0.85f, 1f, 0.9f);
             boneRootColor = new Color(0.2f, 1f, 0.45f, 0.95f);
             endPointColor = new Color(1f, 0.55f, 0.1f, 0.9f);
             mirrorColor = new Color(0.7f, 0.35f, 1f, 0.75f);
+            collisionRadiusColor = new Color(1f, 0.25f, 0.05f, 0.95f);
             pivotGizmoRadius = 0.08f;
             endPointGizmoRadius = 0.045f;
             boneCandidatesExpanded = true;
@@ -1010,6 +1021,8 @@ namespace Faidlix.UnityTools
                 if (state.target == null) continue;
                 state.target.localRotation = state.restLocalRotation;
                 state.lastAppliedLocalRotation = state.restLocalRotation;
+                state.previousTipPosition = GetNodeTip(state);
+                state.collisionTipInitialized = false;
             }
             Transform anchor = GetMotionAnchor();
             previousAnchorPosition = anchor != null ? anchor.position : transform.position;
@@ -1060,7 +1073,7 @@ namespace Faidlix.UnityTools
         private void AddState(Transform target, Vector3 localAxis, float length, float influence,
             FDX_AxisControlSettings axisSettings, Transform anchor = null, FDX_MotionSettings motionSettingsOverride = null)
         {
-            nodeStates.Add(new NodeState
+            var state = new NodeState
             {
                 target = target,
                 restLocalRotation = target.localRotation,
@@ -1071,7 +1084,9 @@ namespace Faidlix.UnityTools
                 axisSettings = axisSettings ?? new FDX_AxisControlSettings(),
                 motionSettings = motionSettingsOverride,
                 simulationAnchor = anchor
-            });
+            };
+            state.previousTipPosition = GetNodeTip(state);
+            nodeStates.Add(state);
         }
 
         private void EnsureRuntimePivot()
@@ -1131,25 +1146,130 @@ namespace Faidlix.UnityTools
         private Vector3 CalculateCollisionForce(NodeState state, FDX_MotionSettings activeSettings)
         {
             if (activeSettings == null || !activeSettings.enableCollision || state.target == null) return Vector3.zero;
+            Vector3 root = GetCollisionSegmentStart(state);
+            Vector3 tip = GetNodeTip(state);
+            CollectCollisionCandidates(root, tip, state, activeSettings);
+            return CalculateSegmentCollisionCorrection(root, tip, activeSettings.collisionRadius);
+        }
+
+        private void ResolveCollisionConstraint(NodeState state, FDX_MotionSettings activeSettings,
+            FDX_AxisControlSettings axisSettings, Vector3 maxAngle)
+        {
+            if (activeSettings == null || !activeSettings.enableCollision || state.target == null) return;
+            float blend = Mathf.Abs(activeSettings.animationBlend);
+            if (blend < 0.0001f) return;
+
+            for (int iteration = 0; iteration < 3; iteration++)
+            {
+                Vector3 root = GetCollisionSegmentStart(state);
+                Vector3 tip = GetNodeTip(state);
+                CollectCollisionCandidates(root, tip, state, activeSettings);
+                Vector3 correction = CalculateSegmentCollisionCorrection(root, tip, activeSettings.collisionRadius);
+                if (state.collisionTipInitialized)
+                {
+                    Vector3 sweep = CalculateSegmentCollisionCorrection(state.previousTipPosition, tip,
+                        activeSettings.collisionRadius);
+                    if (sweep.sqrMagnitude > correction.sqrMagnitude) correction = sweep;
+                }
+                if (correction.sqrMagnitude < 0.00000001f) break;
+                Vector3 currentDirection = tip - state.target.position;
+                Vector3 desiredDirection = tip + correction - state.target.position;
+                if (currentDirection.sqrMagnitude < 0.000001f || desiredDirection.sqrMagnitude < 0.000001f) break;
+                Quaternion worldDelta = Quaternion.FromToRotation(currentDirection, desiredDirection);
+                Quaternion desiredWorld = worldDelta * state.target.rotation;
+                Quaternion desiredLocal = state.target.parent != null
+                    ? Quaternion.Inverse(state.target.parent.rotation) * desiredWorld
+                    : desiredWorld;
+                Vector3 desiredAngle = ToSignedEuler(Quaternion.Inverse(state.restLocalRotation) * desiredLocal) / blend;
+                state.angle = axisSettings.ApplyLocks(ClampComponents(desiredAngle, maxAngle));
+                state.angularVelocity *= Mathf.Clamp01(1f - activeSettings.collisionFriction);
+                state.lastAppliedLocalRotation = state.restLocalRotation *
+                                                 Quaternion.Euler(state.angle * activeSettings.animationBlend);
+                state.target.localRotation = state.lastAppliedLocalRotation;
+            }
+            state.previousTipPosition = GetNodeTip(state);
+            state.collisionTipInitialized = true;
+        }
+
+        private Vector3 GetCollisionSegmentStart(NodeState state)
+        {
+            Vector3 root = state.target.position;
+            return Vector3.Lerp(root, GetNodeTip(state), 0.05f);
+        }
+
+        private static Vector3 GetNodeTip(NodeState state)
+        {
+            if (state == null || state.target == null) return Vector3.zero;
             Vector3 worldAxis = state.target.TransformDirection(state.localAxis);
             if (worldAxis.sqrMagnitude < 0.0001f) worldAxis = -state.target.up;
-            Vector3 tip = state.target.position + worldAxis.normalized * state.length;
-            Vector3 correction = Vector3.zero;
-            foreach (Collider col in explicitColliders) correction += GetColliderCorrection(col, tip, activeSettings.collisionRadius);
-            int count = Physics.OverlapSphereNonAlloc(tip, activeSettings.collisionRadius, collisionBuffer,
+            return state.target.position + worldAxis.normalized * state.length;
+        }
+
+        private void CollectCollisionCandidates(Vector3 start, Vector3 end, NodeState state,
+            FDX_MotionSettings activeSettings)
+        {
+            collisionCandidates.Clear();
+            foreach (Collider col in explicitColliders)
+                if (IsUsableCollider(col)) collisionCandidates.Add(col);
+            int count = Physics.OverlapCapsuleNonAlloc(start, end, activeSettings.collisionRadius, collisionBuffer,
                 activeSettings.collisionLayers, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < count; i++)
+                if (IsUsableCollider(collisionBuffer[i])) collisionCandidates.Add(collisionBuffer[i]);
+            if (!state.collisionTipInitialized) return;
+            count = Physics.OverlapCapsuleNonAlloc(state.previousTipPosition, end, activeSettings.collisionRadius,
+                collisionBuffer, activeSettings.collisionLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
+                if (IsUsableCollider(collisionBuffer[i])) collisionCandidates.Add(collisionBuffer[i]);
+        }
+
+        private bool IsUsableCollider(Collider col)
+        {
+            return col != null && col.enabled && !col.isTrigger && !col.transform.IsChildOf(transform);
+        }
+
+        private Vector3 CalculateSegmentCollisionCorrection(Vector3 start, Vector3 end, float radius)
+        {
+            Vector3 best = Vector3.zero;
+            foreach (Collider col in collisionCandidates)
             {
-                Collider col = collisionBuffer[i];
-                if (col == null || explicitColliders.Contains(col) || col.transform.IsChildOf(transform)) continue;
-                correction += GetColliderCorrection(col, tip, activeSettings.collisionRadius);
+                Vector3 correction = GetColliderSegmentCorrection(col, start, end, radius);
+                if (correction.sqrMagnitude > best.sqrMagnitude) best = correction;
             }
-            return correction;
+            return best;
+        }
+
+        private static Vector3 GetColliderSegmentCorrection(Collider col, Vector3 start, Vector3 end, float radius)
+        {
+            if (col is SphereCollider sphere)
+            {
+                Vector3 center = sphere.transform.TransformPoint(sphere.center);
+                Vector3 scale = Abs(sphere.transform.lossyScale);
+                float colliderRadius = sphere.radius * Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
+                Vector3 point = ClosestPointOnSegment(start, end, center);
+                return GetRadialCorrection(point - center, colliderRadius + radius, sphere.transform.up);
+            }
+            if (col is CapsuleCollider capsule)
+            {
+                GetCapsuleAxis(capsule, out Vector3 capsuleStart, out Vector3 capsuleEnd, out float colliderRadius);
+                ClosestPointsOnSegments(start, end, capsuleStart, capsuleEnd, out Vector3 point, out Vector3 capsulePoint);
+                return GetRadialCorrection(point - capsulePoint, colliderRadius + radius, capsule.transform.up);
+            }
+            Vector3 best = Vector3.zero;
+            const int samples = 24;
+            for (int i = 0; i <= samples; i++)
+            {
+                Vector3 correction = GetColliderCorrection(col, Vector3.Lerp(start, end, i / (float)samples), radius);
+                if (correction.sqrMagnitude > best.sqrMagnitude) best = correction;
+            }
+            return best;
         }
 
         private static Vector3 GetColliderCorrection(Collider col, Vector3 point, float radius)
         {
             if (col == null || !col.enabled) return Vector3.zero;
+            if (col is SphereCollider sphere) return GetSphereCorrection(sphere, point, radius);
+            if (col is CapsuleCollider capsule) return GetCapsuleCorrection(capsule, point, radius);
+            if (col is BoxCollider box) return GetBoxCorrection(box, point, radius);
             Vector3 closest = col.ClosestPoint(point);
             Vector3 delta = point - closest;
             float distance = delta.magnitude;
@@ -1158,9 +1278,126 @@ namespace Faidlix.UnityTools
             {
                 delta = point - col.bounds.center;
                 if (delta.sqrMagnitude < 0.0001f) delta = Vector3.up;
-                distance = 0f;
             }
             return delta.normalized * (radius - distance);
+        }
+
+        private static Vector3 GetSphereCorrection(SphereCollider sphere, Vector3 point, float radius)
+        {
+            Vector3 center = sphere.transform.TransformPoint(sphere.center);
+            Vector3 scale = Abs(sphere.transform.lossyScale);
+            float colliderRadius = sphere.radius * Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
+            return GetRadialCorrection(point - center, colliderRadius + radius, sphere.transform.up);
+        }
+
+        private static Vector3 GetCapsuleCorrection(CapsuleCollider capsule, Vector3 point, float radius)
+        {
+            GetCapsuleAxis(capsule, out Vector3 start, out Vector3 end, out float colliderRadius);
+            Vector3 closest = ClosestPointOnSegment(start, end, point);
+            return GetRadialCorrection(point - closest, colliderRadius + radius, capsule.transform.up);
+        }
+
+        private static void GetCapsuleAxis(CapsuleCollider capsule, out Vector3 start, out Vector3 end,
+            out float colliderRadius)
+        {
+            Vector3 scale = Abs(capsule.transform.lossyScale);
+            Vector3 localAxis = capsule.direction == 0 ? Vector3.right : capsule.direction == 1 ? Vector3.up : Vector3.forward;
+            float axisScale = capsule.direction == 0 ? scale.x : capsule.direction == 1 ? scale.y : scale.z;
+            float radialScale = capsule.direction == 0 ? Mathf.Max(scale.y, scale.z) :
+                capsule.direction == 1 ? Mathf.Max(scale.x, scale.z) : Mathf.Max(scale.x, scale.y);
+            colliderRadius = capsule.radius * radialScale;
+            float halfLine = Mathf.Max(0f, capsule.height * axisScale * 0.5f - colliderRadius);
+            Vector3 center = capsule.transform.TransformPoint(capsule.center);
+            Vector3 axis = capsule.transform.TransformDirection(localAxis).normalized;
+            start = center - axis * halfLine;
+            end = center + axis * halfLine;
+        }
+
+        private static Vector3 GetBoxCorrection(BoxCollider box, Vector3 point, float radius)
+        {
+            Vector3 local = box.transform.InverseTransformPoint(point) - box.center;
+            Vector3 half = box.size * 0.5f;
+            Vector3 clamped = new Vector3(Mathf.Clamp(local.x, -half.x, half.x),
+                Mathf.Clamp(local.y, -half.y, half.y), Mathf.Clamp(local.z, -half.z, half.z));
+            Vector3 closestWorld = box.transform.TransformPoint(box.center + clamped);
+            Vector3 delta = point - closestWorld;
+            if (delta.sqrMagnitude > 0.00000001f)
+            {
+                float distance = delta.magnitude;
+                return distance < radius ? delta.normalized * (radius - distance) : Vector3.zero;
+            }
+            Vector3 gaps = half - Abs(local);
+            int axis = gaps.x <= gaps.y && gaps.x <= gaps.z ? 0 : gaps.y <= gaps.z ? 1 : 2;
+            Vector3 localNormal = axis == 0 ? Vector3.right * (local.x >= 0f ? 1f : -1f) :
+                axis == 1 ? Vector3.up * (local.y >= 0f ? 1f : -1f) : Vector3.forward * (local.z >= 0f ? 1f : -1f);
+            Vector3 surfaceLocal = local;
+            if (axis == 0) surfaceLocal.x = localNormal.x * half.x;
+            else if (axis == 1) surfaceLocal.y = localNormal.y * half.y;
+            else surfaceLocal.z = localNormal.z * half.z;
+            Vector3 surfaceWorld = box.transform.TransformPoint(box.center + surfaceLocal);
+            Vector3 outward = surfaceWorld - point;
+            return outward.sqrMagnitude > 0.00000001f
+                ? outward + outward.normalized * radius
+                : box.transform.TransformDirection(localNormal) * radius;
+        }
+
+        private static Vector3 GetRadialCorrection(Vector3 delta, float requiredDistance, Vector3 fallback)
+        {
+            float distance = delta.magnitude;
+            if (distance >= requiredDistance) return Vector3.zero;
+            Vector3 direction = distance > 0.0001f ? delta / distance : fallback.normalized;
+            return direction * (requiredDistance - distance);
+        }
+
+        private static Vector3 ClosestPointOnSegment(Vector3 start, Vector3 end, Vector3 point)
+        {
+            Vector3 segment = end - start;
+            float denominator = segment.sqrMagnitude;
+            if (denominator < 0.000001f) return start;
+            return start + segment * Mathf.Clamp01(Vector3.Dot(point - start, segment) / denominator);
+        }
+
+        private static void ClosestPointsOnSegments(Vector3 p1, Vector3 q1, Vector3 p2, Vector3 q2,
+            out Vector3 first, out Vector3 second)
+        {
+            Vector3 d1 = q1 - p1;
+            Vector3 d2 = q2 - p2;
+            Vector3 r = p1 - p2;
+            float a = Vector3.Dot(d1, d1);
+            float e = Vector3.Dot(d2, d2);
+            float f = Vector3.Dot(d2, r);
+            float s;
+            float t;
+            if (a <= 0.000001f && e <= 0.000001f) { first = p1; second = p2; return; }
+            if (a <= 0.000001f) { s = 0f; t = Mathf.Clamp01(f / e); }
+            else
+            {
+                float c = Vector3.Dot(d1, r);
+                if (e <= 0.000001f) { t = 0f; s = Mathf.Clamp01(-c / a); }
+                else
+                {
+                    float b = Vector3.Dot(d1, d2);
+                    float denominator = a * e - b * b;
+                    s = denominator != 0f ? Mathf.Clamp01((b * f - c * e) / denominator) : 0f;
+                    t = (b * s + f) / e;
+                    if (t < 0f) { t = 0f; s = Mathf.Clamp01(-c / a); }
+                    else if (t > 1f) { t = 1f; s = Mathf.Clamp01((b - c) / a); }
+                }
+            }
+            first = p1 + d1 * s;
+            second = p2 + d2 * t;
+        }
+
+        private static Vector3 Abs(Vector3 value) =>
+            new Vector3(Mathf.Abs(value.x), Mathf.Abs(value.y), Mathf.Abs(value.z));
+
+        private static Vector3 ToSignedEuler(Quaternion rotation)
+        {
+            Vector3 value = rotation.eulerAngles;
+            if (value.x > 180f) value.x -= 360f;
+            if (value.y > 180f) value.y -= 360f;
+            if (value.z > 180f) value.z -= 360f;
+            return value;
         }
 
         private void RestoreRestPose()
@@ -1196,7 +1433,12 @@ namespace Faidlix.UnityTools
         private void OnDrawGizmosSelected()
         {
             if (!showGizmos) return;
-            if (motionSource == MotionSource.ExistingBones) { DrawBoneChainGizmos(); return; }
+            if (motionSource == MotionSource.ExistingBones)
+            {
+                DrawBoneChainGizmos();
+                DrawCollisionRadiusGizmos();
+                return;
+            }
             foreach (PivotGroup group in pivotGroups)
             {
                 if (group == null || !group.enabled) continue;
@@ -1212,6 +1454,23 @@ namespace Faidlix.UnityTools
                     foreach (FlexibleEndPoint point in group.endPoints)
                         DrawEndPointGizmos(point, pivot, false, pivot.position, pivot.rotation);
                 DrawReplicatedPivotGizmos(group, pivot);
+            }
+            DrawCollisionRadiusGizmos();
+        }
+
+        private void DrawCollisionRadiusGizmos()
+        {
+            if (!showCollisionRadiusGizmos) return;
+            Gizmos.color = collisionRadiusColor;
+            foreach (NodeState state in nodeStates)
+            {
+                FDX_MotionSettings activeSettings = state.motionSettings ?? settings;
+                if (state.target == null || activeSettings == null || !activeSettings.enableCollision) continue;
+                Vector3 start = GetCollisionSegmentStart(state);
+                Vector3 end = GetNodeTip(state);
+                Gizmos.DrawWireSphere(start, activeSettings.collisionRadius);
+                Gizmos.DrawWireSphere(end, activeSettings.collisionRadius);
+                DrawCylinderWire(start, end, activeSettings.collisionRadius);
             }
         }
 

@@ -1448,10 +1448,12 @@ namespace Faidlix.UnityTools.Editor
         private SerializedProperty explicitColliders;
         private SerializedProperty showGizmos;
         private SerializedProperty showAllInfluenceRanges;
+        private SerializedProperty showCollisionRadiusGizmos;
         private SerializedProperty pivotColor;
         private SerializedProperty endPointColor;
         private SerializedProperty mirrorColor;
         private SerializedProperty boneRootColor;
+        private SerializedProperty collisionRadiusColor;
         private SerializedProperty pivotGizmoRadius;
         private SerializedProperty endPointGizmoRadius;
         private Transform editingTip;
@@ -1484,10 +1486,12 @@ namespace Faidlix.UnityTools.Editor
             explicitColliders = serializedObject.FindProperty("explicitColliders");
             showGizmos = serializedObject.FindProperty("showGizmos");
             showAllInfluenceRanges = serializedObject.FindProperty("showAllInfluenceRanges");
+            showCollisionRadiusGizmos = serializedObject.FindProperty("showCollisionRadiusGizmos");
             pivotColor = serializedObject.FindProperty("pivotColor");
             endPointColor = serializedObject.FindProperty("endPointColor");
             mirrorColor = serializedObject.FindProperty("mirrorColor");
             boneRootColor = serializedObject.FindProperty("boneRootColor");
+            collisionRadiusColor = serializedObject.FindProperty("collisionRadiusColor");
             pivotGizmoRadius = serializedObject.FindProperty("pivotGizmoRadius");
             endPointGizmoRadius = serializedObject.FindProperty("endPointGizmoRadius");
             SceneView.duringSceneGui += DuringSceneGUI;
@@ -3065,6 +3069,9 @@ namespace Faidlix.UnityTools.Editor
             if (!showGizmos.boolValue) return;
             EditorGUI.indentLevel++;
             EditorGUILayout.PropertyField(showAllInfluenceRanges, new GUIContent("顯示全部影響範圍", "Show All Influence Ranges"));
+            EditorGUILayout.PropertyField(showCollisionRadiusGizmos, new GUIContent("顯示碰撞半徑", "Show Collision Radius"));
+            if (showCollisionRadiusGizmos.boolValue)
+                EditorGUILayout.PropertyField(collisionRadiusColor, new GUIContent("碰撞半徑顏色", "Collision Radius Color"));
             if (motion.Source == FDX_SecondaryMotion.MotionSource.ExistingBones)
             {
                 EditorGUILayout.PropertyField(boneRootColor, new GUIContent("骨架鏈起點顏色", "Bone Chain Root Color"));
