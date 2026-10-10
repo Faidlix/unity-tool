@@ -25,6 +25,7 @@ namespace Faidlix.UnityTools
         public Vector3 gravityDirection = Vector3.down;
         public Vector3 constantWind = Vector3.zero;
         [Min(0f)] public float windMultiplier = 1f;
+        public bool previewAutoSway;
         [Min(0.001f)] public float teleportDistance = 2f;
         [Min(0.001f)] public float maxDeltaTime = 0.0333f;
         public bool enableCollision;
@@ -33,6 +34,7 @@ namespace Faidlix.UnityTools
         [Min(0f)] public float collisionStrength = 20f;
         [Range(0f, 1f)] public float collisionFriction = 0.2f;
         public bool enableDistanceSimulation = true;
+        public bool useSceneViewCameraInEditMode = true;
         public Transform distanceReference;
         public FDX_DistanceUpdateMode distanceUpdateMode = FDX_DistanceUpdateMode.FixedFrameInterval;
         public FDX_DistanceQuality distanceQuality = FDX_DistanceQuality.High;
@@ -65,6 +67,7 @@ namespace Faidlix.UnityTools
             gravityDirection = other.gravityDirection;
             constantWind = other.constantWind;
             windMultiplier = other.windMultiplier;
+            previewAutoSway = other.previewAutoSway;
             teleportDistance = other.teleportDistance;
             maxDeltaTime = other.maxDeltaTime;
             enableCollision = other.enableCollision;
@@ -73,6 +76,7 @@ namespace Faidlix.UnityTools
             collisionStrength = other.collisionStrength;
             collisionFriction = other.collisionFriction;
             enableDistanceSimulation = other.enableDistanceSimulation;
+            useSceneViewCameraInEditMode = other.useSceneViewCameraInEditMode;
             distanceReference = other.distanceReference;
             distanceUpdateMode = other.distanceUpdateMode;
             distanceQuality = other.distanceQuality;
@@ -209,6 +213,9 @@ namespace Faidlix.UnityTools
             [Min(0.001f)] public float displayRadius = 0.04f;
             public bool scaleGizmoByDepth;
             public FDX_AxisControlSettings axisSettings = new FDX_AxisControlSettings();
+            public bool useIndividualMotionSettings;
+            [HideInInspector] public bool motionSettingsExpanded = true;
+            public FDX_MotionSettings motionSettings = new FDX_MotionSettings();
         }
 
         [Serializable]
@@ -217,6 +224,8 @@ namespace Faidlix.UnityTools
             public string id;
             public string parentId;
             public string displayName;
+            public bool enabled = true;
+            public bool soloPreview;
             public bool expanded = true;
             public bool commonSettingsExpanded;
             public List<string> chainIds = new List<string>();
@@ -265,10 +274,11 @@ namespace Faidlix.UnityTools
             public MirrorAxis radialAxis = MirrorAxis.Y;
             public bool enableAdvancedFlexible;
             public List<FlexibleEndPoint> endPoints = new List<FlexibleEndPoint>();
+            [HideInInspector] public List<Transform> replicatedPivots = new List<Transform>();
             [HideInInspector] public bool expanded = true;
         }
 
-        [SerializeField] private MotionSource motionSource = MotionSource.AutomaticPivot;
+        [SerializeField] private MotionSource motionSource = MotionSource.ExistingBones;
         [SerializeField] private bool simulate = true;
         [SerializeField] private ForceSpace forceSpace = ForceSpace.World;
         [SerializeField] private FDX_MotionSettings settings = new FDX_MotionSettings();
@@ -279,6 +289,7 @@ namespace Faidlix.UnityTools
         [SerializeField, HideInInspector] private bool boneChainsExpanded = true;
         [SerializeField, HideInInspector] private bool pivotGroupsExpanded = true;
         [SerializeField, HideInInspector] private bool motionSettingsExpanded = true;
+        [SerializeField, HideInInspector] private bool globalMotionSettingsExpanded = true;
         [SerializeField, HideInInspector] private bool simulationAnchorAutomaticallyAssigned;
         [SerializeField] private List<BoneEntry> existingBones = new List<BoneEntry>();
         [SerializeField] private bool autoCreatePivot = true;
@@ -291,6 +302,12 @@ namespace Faidlix.UnityTools
         [SerializeField] private List<FlexibleEndPoint> endPoints = new List<FlexibleEndPoint>();
         [SerializeField] private bool enablePreciseWeights;
         [SerializeField] private SkinnedMeshRenderer deformingRenderer;
+        [HideInInspector, SerializeField] private bool automaticMultiPivotSkinning;
+        [HideInInspector, SerializeField] private MeshRenderer originalMeshRenderer;
+        [HideInInspector, SerializeField] private MeshFilter originalMeshFilter;
+        [HideInInspector, SerializeField] private SkinnedMeshRenderer automaticMultiPivotRenderer;
+        [HideInInspector, SerializeField] private Material[] originalMeshMaterials = Array.Empty<Material>();
+        [HideInInspector, SerializeField] private bool originalMeshRendererEnabled = true;
         [SerializeField] private List<Collider> explicitColliders = new List<Collider>();
         [SerializeField] private bool showGizmos = true;
         [SerializeField] private bool showAllInfluenceRanges = true;
@@ -310,6 +327,7 @@ namespace Faidlix.UnityTools
             public float length;
             public float influence;
             public FDX_AxisControlSettings axisSettings;
+            public FDX_MotionSettings motionSettings;
             public Transform simulationAnchor;
             public Vector3 angle;
             public Vector3 angularVelocity;
@@ -320,6 +338,9 @@ namespace Faidlix.UnityTools
             public Vector3 previousPosition;
             public Vector3 previousVelocity;
             public Vector3 acceleration;
+            public Quaternion previousRotation;
+            public Vector3 angularVelocity;
+            public Vector3 angularAcceleration;
             public bool initialized;
         }
 
@@ -335,12 +356,16 @@ namespace Faidlix.UnityTools
         private int scheduledFrameCount;
         private bool distanceSleeping;
         private bool initialized;
+        private Transform attachmentAnchor;
+
+        public static Func<Transform> EditModeDistanceReferenceProvider;
 
         public MotionSource Source { get => motionSource; set => motionSource = value; }
-        public bool Simulate { get => simulate; set => simulate = value; }
+        public bool Simulate { get => simulate; set { simulate = value; if (!value) { RestoreRestPose(); initialized = false; } } }
         public ForceSpace Forces { get => forceSpace; set => forceSpace = value; }
         public FDX_MotionSettings Settings => settings;
         public Transform SimulationAnchor { get => simulationAnchor; set => simulationAnchor = value; }
+        public void SetAutomaticAttachmentReference(Transform anchor) => attachmentAnchor = anchor;
         public Transform RotationPivot
         {
             get => pivotGroups != null && pivotGroups.Count > 0 && pivotGroups[0] != null
@@ -377,12 +402,19 @@ namespace Faidlix.UnityTools
         public bool BoneChainsExpanded { get => boneChainsExpanded; set => boneChainsExpanded = value; }
         public bool PivotGroupsExpanded { get => pivotGroupsExpanded; set => pivotGroupsExpanded = value; }
         public bool MotionSettingsExpanded { get => motionSettingsExpanded; set => motionSettingsExpanded = value; }
+        public bool GlobalMotionSettingsExpanded { get => globalMotionSettingsExpanded; set => globalMotionSettingsExpanded = value; }
         public bool SimulationAnchorAutomaticallyAssigned
         {
             get => simulationAnchorAutomaticallyAssigned;
             set => simulationAnchorAutomaticallyAssigned = value;
         }
         public SkinnedMeshRenderer DeformingRenderer { get => deformingRenderer; set => deformingRenderer = value; }
+        public bool AutomaticMultiPivotSkinning { get => automaticMultiPivotSkinning; set => automaticMultiPivotSkinning = value; }
+        public MeshRenderer OriginalMeshRenderer { get => originalMeshRenderer; set => originalMeshRenderer = value; }
+        public MeshFilter OriginalMeshFilter { get => originalMeshFilter; set => originalMeshFilter = value; }
+        public SkinnedMeshRenderer AutomaticMultiPivotRenderer { get => automaticMultiPivotRenderer; set => automaticMultiPivotRenderer = value; }
+        public Material[] OriginalMeshMaterials { get => originalMeshMaterials; set => originalMeshMaterials = value ?? Array.Empty<Material>(); }
+        public bool OriginalMeshRendererEnabled { get => originalMeshRendererEnabled; set => originalMeshRendererEnabled = value; }
         public bool HasValidExistingBones => existingBones.Exists(entry => entry != null && entry.transform != null) ||
                                              boneChains.Exists(chain => chain != null && chain.enabled && chain.root != null);
         public bool HasUsableMotionSource => motionSource == MotionSource.AutomaticPivot || HasValidExistingBones;
@@ -390,12 +422,12 @@ namespace Faidlix.UnityTools
         private void Reset()
         {
             settings = new FDX_MotionSettings();
-            motionSource = MotionSource.AutomaticPivot;
+            motionSource = MotionSource.ExistingBones;
             autoCreatePivot = true;
         }
 
         private void OnEnable() { EnsureDataIntegrity(); initialized = false; }
-        private void OnValidate() => EnsureDataIntegrity();
+        private void OnValidate() { EnsureDataIntegrity(); if (!simulate) StopPreview(); else initialized = false; }
         private void Start() { EnsureDataIntegrity(); EnsureRuntimePivot(); RebuildSimulation(); }
         private void OnDisable() { RestoreRestPose(); initialized = false; }
         private void LateUpdate() { if (simulate) AdvanceScheduledSimulation(Time.deltaTime, Vector3.zero); }
@@ -443,7 +475,11 @@ namespace Faidlix.UnityTools
 
         private int GetDistanceStage()
         {
-            Transform reference = settings.distanceReference;
+            Transform reference = !Application.isPlaying && settings.useSceneViewCameraInEditMode &&
+                                  EditModeDistanceReferenceProvider != null
+                ? EditModeDistanceReferenceProvider()
+                : null;
+            if (reference == null) reference = settings.distanceReference;
             if (reference == null && Camera.main != null) reference = Camera.main.transform;
             if (reference == null) return 0;
             float first = Mathf.Max(0f, settings.fullSimulationDistance);
@@ -463,55 +499,65 @@ namespace Faidlix.UnityTools
             float frameDt = Mathf.Min(deltaTime, settings.maxDeltaTime);
             if (frameDt <= 0f) return;
 
-            Vector3 gravityDirection = settings.gravityDirection;
-            Vector3 wind = settings.constantWind;
-            Transform anchor = GetMotionAnchor();
-            if (forceSpace == ForceSpace.AnchorLocal && anchor != null)
-            {
-                gravityDirection = anchor.TransformDirection(gravityDirection);
-                wind = anchor.TransformDirection(wind);
-            }
-            Vector3 gravity = gravityDirection.sqrMagnitude > 0.0001f
-                ? gravityDirection.normalized * (9.81f * settings.gravityStrength)
-                : Vector3.zero;
-            Vector3 externalWorldForce = gravity + wind * settings.windMultiplier +
-                                         continuousForce + impulseVelocity + additionalWorldForce;
             impulseVelocity = Vector3.MoveTowards(impulseVelocity, Vector3.zero, frameDt * settings.damping);
             UpdateAnchorStates(frameDt);
             int steps = Mathf.Clamp(settings.substeps, 1, 4);
             float dt = frameDt / steps;
-            for (int step = 0; step < steps; step++) SimulateNodes(dt, externalWorldForce);
+            for (int step = 0; step < steps; step++) SimulateNodes(dt, additionalWorldForce);
         }
 
-        private void SimulateNodes(float dt, Vector3 externalWorldForce)
+        private void SimulateNodes(float dt, Vector3 additionalWorldForce)
         {
             foreach (NodeState state in nodeStates)
             {
+                FDX_MotionSettings activeSettings = state.motionSettings ?? settings;
                 FDX_AxisControlSettings axisSettings = state.axisSettings ?? pivotAxisSettings;
                 if (state.target == null || axisSettings.AllLocked) continue;
                 if (Quaternion.Angle(state.target.localRotation, state.lastAppliedLocalRotation) > 0.01f)
                     state.restLocalRotation = state.target.localRotation;
 
-                Vector3 inertia = axisSettings.ResolveInertia(settings);
-                Vector3 spring = axisSettings.ResolveSpring(settings);
-                Vector3 damping = axisSettings.ResolveDamping(settings);
-                Vector3 maxAngle = axisSettings.ResolveMaxAngle(settings);
+                Vector3 inertia = axisSettings.ResolveInertia(activeSettings);
+                Vector3 spring = axisSettings.ResolveSpring(activeSettings);
+                Vector3 damping = axisSettings.ResolveDamping(activeSettings);
+                Vector3 maxAngle = axisSettings.ResolveMaxAngle(activeSettings);
+                Transform forceAnchor = state.simulationAnchor != null ? state.simulationAnchor : GetMotionAnchor();
+                Vector3 gravityDirection = activeSettings.gravityDirection;
+                Vector3 wind = activeSettings.constantWind;
+                if (forceSpace == ForceSpace.AnchorLocal && forceAnchor != null)
+                {
+                    gravityDirection = forceAnchor.TransformDirection(gravityDirection);
+                    wind = forceAnchor.TransformDirection(wind);
+                }
+                Vector3 gravity = gravityDirection.sqrMagnitude > 0.0001f
+                    ? gravityDirection.normalized * (9.81f * activeSettings.gravityStrength)
+                    : Vector3.zero;
+                Vector3 externalWorldForce = gravity + wind * activeSettings.windMultiplier +
+                                             continuousForce + impulseVelocity + additionalWorldForce;
                 Vector3 localForce = state.target.InverseTransformDirection(externalWorldForce);
                 Transform anchor = state.simulationAnchor != null ? state.simulationAnchor : GetMotionAnchor();
                 Vector3 anchorAcceleration = anchor != null && anchorStates.TryGetValue(anchor, out AnchorState anchorState)
                     ? anchorState.acceleration
                     : Vector3.zero;
+                if (anchor != null && anchorStates.TryGetValue(anchor, out AnchorState rotationState))
+                {
+                    Vector3 restAxis = state.target.parent != null
+                        ? state.target.parent.rotation * state.restLocalRotation * state.localAxis.normalized
+                        : state.restLocalRotation * state.localAxis.normalized;
+                    Vector3 offset = state.target.position + restAxis * state.length - anchor.position;
+                    anchorAcceleration += Vector3.Cross(rotationState.angularAcceleration, offset) +
+                        Vector3.Cross(rotationState.angularVelocity, Vector3.Cross(rotationState.angularVelocity, offset));
+                }
                 Vector3 localAcceleration = state.target.InverseTransformDirection(anchorAcceleration);
                 localForce -= Vector3.Scale(localAcceleration, inertia);
                 Vector3 axis = state.localAxis.sqrMagnitude > 0.0001f ? state.localAxis.normalized : Vector3.down;
                 Vector3 targetAngle = Vector3.Cross(axis, localForce) * (state.influence * 3.5f);
 
-                Vector3 collisionForce = CalculateCollisionForce(state);
+                Vector3 collisionForce = CalculateCollisionForce(state, activeSettings);
                 if (collisionForce.sqrMagnitude > 0.0001f)
                 {
                     Vector3 localCollision = state.target.InverseTransformDirection(collisionForce);
-                    targetAngle += Vector3.Cross(axis, localCollision) * settings.collisionStrength;
-                    state.angularVelocity *= 1f - settings.collisionFriction;
+                    targetAngle += Vector3.Cross(axis, localCollision) * activeSettings.collisionStrength;
+                    state.angularVelocity *= 1f - activeSettings.collisionFriction;
                 }
 
                 targetAngle = axisSettings.ApplyLocks(ClampComponents(targetAngle, maxAngle));
@@ -524,7 +570,7 @@ namespace Faidlix.UnityTools
                 state.angularVelocity = axisSettings.ApplyLocks(state.angularVelocity);
                 state.angle = axisSettings.ApplyLocks(ClampComponents(state.angle + state.angularVelocity * dt, maxAngle));
                 state.lastAppliedLocalRotation = state.restLocalRotation *
-                                                 Quaternion.Euler(state.angle * settings.animationBlend);
+                                                 Quaternion.Euler(state.angle * activeSettings.animationBlend);
                 state.target.localRotation = state.lastAppliedLocalRotation;
             }
         }
@@ -535,7 +581,7 @@ namespace Faidlix.UnityTools
             foreach (NodeState state in nodeStates)
             {
                 Transform anchor = state.simulationAnchor != null ? state.simulationAnchor : GetMotionAnchor();
-                if (anchor == null || !activeAnchors.Add(anchor)) continue;
+                if (state.target == null || anchor == null || anchor == state.target || anchor.IsChildOf(state.target) || !activeAnchors.Add(anchor)) continue;
                 if (!anchorStates.TryGetValue(anchor, out AnchorState history))
                 {
                     history = new AnchorState();
@@ -547,6 +593,9 @@ namespace Faidlix.UnityTools
                     history.previousPosition = position;
                     history.previousVelocity = Vector3.zero;
                     history.acceleration = Vector3.zero;
+                    history.previousRotation = anchor.rotation;
+                    history.angularVelocity = Vector3.zero;
+                    history.angularAcceleration = Vector3.zero;
                     history.initialized = true;
                     continue;
                 }
@@ -554,16 +603,30 @@ namespace Faidlix.UnityTools
                 history.acceleration = (velocity - history.previousVelocity) / Mathf.Max(0.0001f, frameDt);
                 history.previousPosition = position;
                 history.previousVelocity = velocity;
+                Quaternion deltaRotation = anchor.rotation * Quaternion.Inverse(history.previousRotation);
+                if (deltaRotation.w < 0f) deltaRotation = new Quaternion(-deltaRotation.x, -deltaRotation.y, -deltaRotation.z, -deltaRotation.w);
+                deltaRotation.ToAngleAxis(out float angle, out Vector3 axis);
+                Vector3 angularVelocity = angle > 0.001f && axis.sqrMagnitude > 0.0001f
+                    ? axis.normalized * (angle * Mathf.Deg2Rad / Mathf.Max(0.0001f, frameDt)) : Vector3.zero;
+                history.angularAcceleration = (angularVelocity - history.angularVelocity) / Mathf.Max(0.0001f, frameDt);
+                history.angularVelocity = angularVelocity;
+                history.previousRotation = anchor.rotation;
             }
         }
 
         public void PreviewStep(float deltaTime)
         {
-            if (!simulate || Application.isPlaying) return;
+            if (!simulate || !isActiveAndEnabled || Application.isPlaying) return;
             previewTime += deltaTime;
-            Vector3 previewForce = new Vector3(Mathf.Sin(previewTime * 2.3f), 0f,
-                Mathf.Cos(previewTime * 1.7f)) * 2f;
-            AdvanceScheduledSimulation(deltaTime, previewForce);
+            Vector3 previewForce = settings.previewAutoSway
+                ? new Vector3(Mathf.Sin(previewTime * 2.3f), 0f, Mathf.Cos(previewTime * 1.7f)) * 2f
+                : Vector3.zero;
+            // Explicit edit-mode sway is a preview command. Keep it visible even when the distance LOD
+            // would normally enter its final "stop simulation" band.
+            if (settings.previewAutoSway && settings.enableDistanceSimulation && GetDistanceStage() >= 3)
+                SimulateStep(deltaTime, previewForce);
+            else
+                AdvanceScheduledSimulation(deltaTime, previewForce);
         }
 
         public void StopPreview()
@@ -598,14 +661,20 @@ namespace Faidlix.UnityTools
             var used = new HashSet<Transform>();
             if (motionSource == MotionSource.ExistingBones)
             {
-                bool hasSolo = boneChains.Exists(chain => chain != null && chain.enabled && chain.solo);
+                bool hasGroupSolo = boneChainGroups.Exists(group => group != null && group.soloPreview &&
+                    IsGroupHierarchyEnabled(group));
+                bool hasChainSolo = !hasGroupSolo && boneChains.Exists(chain => chain != null && chain.enabled &&
+                    chain.solo && IsChainGroupEnabled(chain));
                 foreach (BoneChain chain in boneChains)
-                    if (!hasSolo || (chain != null && chain.solo)) AddBoneChain(chain, used);
-                foreach (BoneEntry entry in existingBones)
-                {
-                    if (entry == null || entry.transform == null || !used.Add(entry.transform)) continue;
-                    AddState(entry.transform, entry.localAxis, entry.length, entry.influence, entry.axisSettings);
-                }
+                    if (IsChainGroupEnabled(chain) &&
+                        (!hasGroupSolo || IsChainInSoloGroup(chain)) &&
+                        (!hasChainSolo || (chain != null && chain.solo))) AddBoneChain(chain, used);
+                if (!hasGroupSolo && !hasChainSolo)
+                    foreach (BoneEntry entry in existingBones)
+                    {
+                        if (entry == null || entry.transform == null || !used.Add(entry.transform)) continue;
+                        AddState(entry.transform, entry.localAxis, entry.length, entry.influence, entry.axisSettings);
+                    }
             }
             else
             {
@@ -619,6 +688,11 @@ namespace Faidlix.UnityTools
                     if (motionTarget != null && used.Add(motionTarget))
                         AddState(motionTarget, Vector3.down, Mathf.Max(0.05f, pivotGizmoRadius * 2f), 1f,
                             group.axisSettings, anchor);
+                    if (group.replicatedPivots != null)
+                        foreach (Transform replica in group.replicatedPivots)
+                            if (replica != null && used.Add(replica))
+                                AddState(replica, Vector3.down, Mathf.Max(0.05f, pivotGizmoRadius * 2f), 1f,
+                                    group.axisSettings, anchor);
                     if (group.enableAdvancedFlexible)
                         foreach (FlexibleEndPoint point in group.endPoints)
                             AddEndPointStates(point, pivot, used, anchor);
@@ -632,6 +706,46 @@ namespace Faidlix.UnityTools
         {
             if (chain == null || !chain.enabled || chain.root == null) return;
             AddBoneRecursive(chain.root, chain, used, 0);
+        }
+
+        private BoneChainGroup FindOwningGroup(BoneChain chain)
+        {
+            if (chain == null || string.IsNullOrEmpty(chain.editorId)) return null;
+            return boneChainGroups.Find(group => group != null && group.chainIds != null &&
+                group.chainIds.Contains(chain.editorId));
+        }
+
+        private bool IsGroupHierarchyEnabled(BoneChainGroup group)
+        {
+            var visited = new HashSet<string>();
+            while (group != null)
+            {
+                if (!group.enabled) return false;
+                if (string.IsNullOrEmpty(group.parentId) || !visited.Add(group.parentId)) break;
+                string parentId = group.parentId;
+                group = boneChainGroups.Find(candidate => candidate != null && candidate.id == parentId);
+            }
+            return true;
+        }
+
+        private bool IsChainGroupEnabled(BoneChain chain)
+        {
+            BoneChainGroup group = FindOwningGroup(chain);
+            return group == null || IsGroupHierarchyEnabled(group);
+        }
+
+        private bool IsChainInSoloGroup(BoneChain chain)
+        {
+            BoneChainGroup group = FindOwningGroup(chain);
+            var visited = new HashSet<string>();
+            while (group != null)
+            {
+                if (group.soloPreview && IsGroupHierarchyEnabled(group)) return true;
+                if (string.IsNullOrEmpty(group.parentId) || !visited.Add(group.parentId)) break;
+                string parentId = group.parentId;
+                group = boneChainGroups.Find(candidate => candidate != null && candidate.id == parentId);
+            }
+            return false;
         }
 
         private void EnsureDataIntegrity()
@@ -651,6 +765,7 @@ namespace Faidlix.UnityTools
                 if (string.IsNullOrWhiteSpace(chain.editorId)) chain.editorId = Guid.NewGuid().ToString("N");
                 if (chain.excludedBones == null) chain.excludedBones = new List<Transform>();
                 if (chain.axisSettings == null) chain.axisSettings = new FDX_AxisControlSettings();
+                if (chain.motionSettings == null) chain.motionSettings = new FDX_MotionSettings();
             }
             foreach (BoneEntry entry in existingBones)
                 if (entry != null && entry.axisSettings == null) entry.axisSettings = new FDX_AxisControlSettings();
@@ -704,7 +819,7 @@ namespace Faidlix.UnityTools
         public void ResetToDefaults()
         {
             StopPreview();
-            motionSource = MotionSource.AutomaticPivot;
+            motionSource = MotionSource.ExistingBones;
             simulate = true;
             forceSpace = ForceSpace.World;
             settings = new FDX_MotionSettings();
@@ -723,6 +838,12 @@ namespace Faidlix.UnityTools
             endPoints = new List<FlexibleEndPoint>();
             enablePreciseWeights = false;
             deformingRenderer = null;
+            automaticMultiPivotSkinning = false;
+            originalMeshRenderer = null;
+            originalMeshFilter = null;
+            automaticMultiPivotRenderer = null;
+            originalMeshMaterials = Array.Empty<Material>();
+            originalMeshRendererEnabled = true;
             explicitColliders = new List<Collider>();
             showGizmos = true;
             showAllInfluenceRanges = true;
@@ -736,6 +857,7 @@ namespace Faidlix.UnityTools
             boneChainsExpanded = true;
             pivotGroupsExpanded = true;
             motionSettingsExpanded = true;
+            globalMotionSettingsExpanded = true;
             initialized = false;
         }
 
@@ -814,7 +936,8 @@ namespace Faidlix.UnityTools
                     ? bone.InverseTransformDirection(directionChild.position - bone.position)
                     : Vector3.down;
                 float length = directionChild != null ? Vector3.Distance(bone.position, directionChild.position) : 0.1f;
-                AddState(bone, axis, length, chain.influence, chain.axisSettings);
+                AddState(bone, axis, length, chain.influence, chain.axisSettings, null,
+                    chain.useIndividualMotionSettings ? chain.motionSettings : null);
             }
             if (!chain.includeChildBones || (!chain.allBonesSway && depth + 1 >= Mathf.Max(1, chain.boneMotionLevels)))
                 return true;
@@ -935,7 +1058,7 @@ namespace Faidlix.UnityTools
         }
 
         private void AddState(Transform target, Vector3 localAxis, float length, float influence,
-            FDX_AxisControlSettings axisSettings, Transform anchor = null)
+            FDX_AxisControlSettings axisSettings, Transform anchor = null, FDX_MotionSettings motionSettingsOverride = null)
         {
             nodeStates.Add(new NodeState
             {
@@ -946,6 +1069,7 @@ namespace Faidlix.UnityTools
                 length = Mathf.Max(0.001f, length),
                 influence = influence,
                 axisSettings = axisSettings ?? new FDX_AxisControlSettings(),
+                motionSettings = motionSettingsOverride,
                 simulationAnchor = anchor
             });
         }
@@ -968,7 +1092,7 @@ namespace Faidlix.UnityTools
         private Transform ResolveMotionTarget(PivotGroup group)
         {
             if (group.motionTarget != null) return group.motionTarget;
-            if (pivotGroups.Count > 1 && group.pivot != null) return group.pivot;
+            if ((pivotGroups.Count > 1 || automaticMultiPivotSkinning || group.replicationMode != PivotReplicationMode.None) && group.pivot != null) return group.pivot;
             if (group.pivot == null) return transform;
             return group.pivot.IsChildOf(transform) ? transform : group.pivot;
         }
@@ -976,6 +1100,9 @@ namespace Faidlix.UnityTools
         private Transform ResolveSimulationAnchor(PivotGroup group, Transform motionTarget)
         {
             if (!group.automaticSimulationAnchor && group.simulationAnchor != null) return group.simulationAnchor;
+            if (attachmentAnchor != null) return attachmentAnchor;
+            if (automaticMultiPivotSkinning && motionTarget != null && motionTarget.IsChildOf(transform))
+                return transform.parent != null ? transform.parent : transform;
             if (motionTarget != null && motionTarget.parent != null) return motionTarget.parent;
             Transform pivot = group.pivot != null ? group.pivot : motionTarget;
             return pivot != null && pivot.parent != null ? pivot.parent : pivot;
@@ -989,7 +1116,8 @@ namespace Faidlix.UnityTools
 
         private Transform GetMotionAnchor()
         {
-            if (simulationAnchor != null) return simulationAnchor;
+            if (simulationAnchor != null && !simulationAnchorAutomaticallyAssigned) return simulationAnchor;
+            if (attachmentAnchor != null) return attachmentAnchor;
             if (motionSource == MotionSource.AutomaticPivot)
             {
                 Transform motionTarget = GetAutomaticMotionTarget();
@@ -1000,21 +1128,21 @@ namespace Faidlix.UnityTools
             return transform.parent != null ? transform.parent : transform;
         }
 
-        private Vector3 CalculateCollisionForce(NodeState state)
+        private Vector3 CalculateCollisionForce(NodeState state, FDX_MotionSettings activeSettings)
         {
-            if (!settings.enableCollision || state.target == null) return Vector3.zero;
+            if (activeSettings == null || !activeSettings.enableCollision || state.target == null) return Vector3.zero;
             Vector3 worldAxis = state.target.TransformDirection(state.localAxis);
             if (worldAxis.sqrMagnitude < 0.0001f) worldAxis = -state.target.up;
             Vector3 tip = state.target.position + worldAxis.normalized * state.length;
             Vector3 correction = Vector3.zero;
-            foreach (Collider col in explicitColliders) correction += GetColliderCorrection(col, tip, settings.collisionRadius);
-            int count = Physics.OverlapSphereNonAlloc(tip, settings.collisionRadius, collisionBuffer,
-                settings.collisionLayers, QueryTriggerInteraction.Ignore);
+            foreach (Collider col in explicitColliders) correction += GetColliderCorrection(col, tip, activeSettings.collisionRadius);
+            int count = Physics.OverlapSphereNonAlloc(tip, activeSettings.collisionRadius, collisionBuffer,
+                activeSettings.collisionLayers, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < count; i++)
             {
                 Collider col = collisionBuffer[i];
                 if (col == null || explicitColliders.Contains(col) || col.transform.IsChildOf(transform)) continue;
-                correction += GetColliderCorrection(col, tip, settings.collisionRadius);
+                correction += GetColliderCorrection(col, tip, activeSettings.collisionRadius);
             }
             return correction;
         }
@@ -1073,8 +1201,12 @@ namespace Faidlix.UnityTools
             {
                 if (group == null || !group.enabled) continue;
                 Transform pivot = group.pivot != null ? group.pivot : transform;
+                Color solidPivot = pivotColor;
+                solidPivot.a = Mathf.Min(solidPivot.a, 0.3f);
+                Gizmos.color = solidPivot;
+                Gizmos.DrawSphere(pivot.position, pivotGizmoRadius * 0.3f);
+                DrawPivotOrientation(pivot);
                 Gizmos.color = pivotColor;
-                Gizmos.DrawWireSphere(pivot.position, pivotGizmoRadius);
                 if (showAllInfluenceRanges) Gizmos.DrawWireSphere(pivot.position, group.influenceRadius);
                 if (group.enableAdvancedFlexible)
                     foreach (FlexibleEndPoint point in group.endPoints)
@@ -1083,14 +1215,52 @@ namespace Faidlix.UnityTools
             }
         }
 
+        private void DrawPivotOrientation(Transform pivot)
+        {
+            NodeState state = nodeStates.Find(item => item.target == pivot);
+            Quaternion rest = state != null
+                ? (pivot.parent != null ? pivot.parent.rotation : Quaternion.identity) * state.restLocalRotation
+                : pivot.rotation;
+            float length = Mathf.Max(0.02f, pivotGizmoRadius * 4f);
+            Vector3[] axes = { Vector3.right, Vector3.up, Vector3.forward };
+            Color[] colors = { Color.red, Color.green, Color.blue };
+            for (int i = 0; i < axes.Length; i++)
+            {
+                Gizmos.color = new Color(colors[i].r, colors[i].g, colors[i].b, 0.22f);
+                Gizmos.DrawLine(pivot.position, pivot.position + rest * axes[i] * length);
+                Gizmos.color = colors[i];
+                Vector3 direction = pivot.rotation * axes[i];
+                Vector3 end = pivot.position + direction * length;
+                Gizmos.DrawLine(pivot.position, end);
+                Vector3 side = pivot.rotation * axes[(i + 1) % 3] * (length * 0.12f);
+                Gizmos.DrawLine(end, end - direction * (length * 0.2f) + side);
+                Gizmos.DrawLine(end, end - direction * (length * 0.2f) - side);
+            }
+        }
+
         private void DrawReplicatedPivotGizmos(PivotGroup group, Transform pivot)
         {
+            if (group.replicatedPivots != null && group.replicatedPivots.Count > 0)
+            {
+                foreach (Transform replica in group.replicatedPivots)
+                {
+                    if (replica == null) continue;
+                    DrawPivotOrientation(replica);
+                    Gizmos.color = mirrorColor;
+                    Gizmos.DrawSphere(replica.position, pivotGizmoRadius * 0.3f);
+                    if (showAllInfluenceRanges) Gizmos.DrawWireSphere(replica.position, group.influenceRadius);
+                }
+                return;
+            }
             var positions = new List<Vector3>();
             GetReplicatedPivotPositions(group, positions);
             foreach (Vector3 position in positions)
             {
+                Color solidMirror = mirrorColor;
+                solidMirror.a = Mathf.Min(solidMirror.a, 0.3f);
+                Gizmos.color = solidMirror;
+                Gizmos.DrawSphere(position, pivotGizmoRadius);
                 Gizmos.color = mirrorColor;
-                Gizmos.DrawWireSphere(position, pivotGizmoRadius);
                 if (showAllInfluenceRanges) Gizmos.DrawWireSphere(position, group.influenceRadius);
             }
         }
@@ -1127,7 +1297,8 @@ namespace Faidlix.UnityTools
         private void DrawBoneChainGizmos()
         {
             foreach (BoneChain chain in boneChains)
-                if (chain != null && chain.enabled && chain.root != null) DrawBoneGizmoRecursive(chain.root, chain, 0);
+                if (chain != null && chain.enabled && chain.root != null && IsChainGroupEnabled(chain))
+                    DrawBoneGizmoRecursive(chain.root, chain, 0);
         }
 
         private void DrawBoneGizmoRecursive(Transform bone, BoneChain chain, int depth)
