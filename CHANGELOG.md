@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.1 - 2026-10-10
+
+- Secondary Motion 底部將「回到 Manager」、「顯示腳本檔案」與「全部重設」合併為同一行，並把回到 Manager 固定放在最前方。
+- 「回到 Manager」改為尋找並跳到只顯示擺動物件與全域模擬開關的 `FDX_SecondaryMotionManager`，不再跳到裝備掛載管理器。
+- 全域與各別動態設定展開後的欄位整體縮排，與該層動態設定摺疊箭頭切齊。
+- 每個指定碰撞器前新增編輯按鈕，可在 Scene View 直接調整位置與大小；Box、Sphere、Capsule 會修改 Collider 形狀，其他類型則調整物件 Transform。
+
 ## 1.8.0 - 2026-10-10
 
 - 將原管理器拆成只處理裝備掛載的 `FDX_AttachmentManager`，以及只列出擺動物件、提供全域模擬開關與跳轉功能的 `FDX_SecondaryMotionManager`；舊場景檢視時會自動補齊新元件。

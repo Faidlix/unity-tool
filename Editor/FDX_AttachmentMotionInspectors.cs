@@ -8,6 +8,8 @@ namespace Faidlix.UnityTools.Editor
 {
     internal static class FDX_InspectorGUI
     {
+        internal static Collider EditingCollider { get; private set; }
+
         private static int activeDistanceHandle = -1;
         private static GUIContent C(string chinese, string english) => new GUIContent(chinese, english);
 
@@ -53,7 +55,7 @@ namespace Faidlix.UnityTools.Editor
                 if (collidersExpanded.boolValue)
                 {
                     EditorGUI.indentLevel++;
-                    EditorGUILayout.PropertyField(colliders, C("指定碰撞器", "不受碰撞圖層搜尋限制，固定納入此組擺動的碰撞計算。"), true);
+                    DrawColliderList(colliders);
                     EditorGUI.indentLevel--;
                 }
                 EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionLayers"), C("碰撞圖層", "自動搜尋碰撞器時要包含的 Unity Layer。"));
@@ -65,6 +67,54 @@ namespace Faidlix.UnityTools.Editor
             }
 
             DrawDistanceSettings(property);
+        }
+
+        private static void DrawColliderList(SerializedProperty colliders)
+        {
+            EditorGUILayout.LabelField(C("指定碰撞器", "不受碰撞圖層搜尋限制，固定納入此組擺動的碰撞計算。"), EditorStyles.boldLabel);
+            int nextSize = Mathf.Max(0, EditorGUILayout.IntField(C("數量", "指定碰撞器的數量。"), colliders.arraySize));
+            if (nextSize != colliders.arraySize) colliders.arraySize = nextSize;
+
+            for (int i = 0; i < colliders.arraySize; i++)
+            {
+                SerializedProperty element = colliders.GetArrayElementAtIndex(i);
+                Collider collider = element.objectReferenceValue as Collider;
+                EditorGUILayout.BeginHorizontal();
+                using (new EditorGUI.DisabledScope(collider == null))
+                {
+                    bool editing = collider != null && EditingCollider == collider;
+                    bool nextEditing = GUILayout.Toggle(editing, editing ? "結束" : "編輯",
+                        EditorStyles.miniButton, GUILayout.Width(46f));
+                    if (nextEditing != editing)
+                    {
+                        EditingCollider = nextEditing ? collider : null;
+                        SceneView.RepaintAll();
+                    }
+                }
+                EditorGUILayout.PropertyField(element, new GUIContent($"Element {i}"));
+                if (GUILayout.Button("−", GUILayout.Width(24f)))
+                {
+                    if (EditingCollider == collider) EditingCollider = null;
+                    int oldSize = colliders.arraySize;
+                    colliders.DeleteArrayElementAtIndex(i);
+                    if (colliders.arraySize == oldSize) colliders.DeleteArrayElementAtIndex(i);
+                    SceneView.RepaintAll();
+                    EditorGUILayout.EndHorizontal();
+                    break;
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("＋", GUILayout.Width(32f))) colliders.arraySize++;
+            EditorGUILayout.EndHorizontal();
+        }
+
+        internal static void StopColliderEditing()
+        {
+            EditingCollider = null;
+            SceneView.RepaintAll();
         }
 
         private static void DrawDistanceSettings(SerializedProperty property)
@@ -1525,7 +1575,7 @@ namespace Faidlix.UnityTools.Editor
         private Transform editingTip;
         private bool previousToolsHidden;
         private bool toolsHiddenByInspector;
-        private FDX_AttachmentManager cachedRelatedManager;
+        private FDX_SecondaryMotionManager cachedRelatedManager;
         private double nextRelatedManagerRefreshTime;
         private bool relatedManagerCacheDirty = true;
 
@@ -1573,6 +1623,7 @@ namespace Faidlix.UnityTools.Editor
             SceneView.duringSceneGui -= DuringSceneGUI;
             EditorApplication.hierarchyChanged -= MarkRelatedManagerCacheDirty;
             Undo.undoRedoPerformed -= MarkRelatedManagerCacheDirty;
+            FDX_InspectorGUI.StopColliderEditing();
             if (toolsHiddenByInspector) Tools.hidden = previousToolsHidden;
             toolsHiddenByInspector = false;
             editingTip = null;
@@ -1799,23 +1850,25 @@ namespace Faidlix.UnityTools.Editor
             serializedObject.Update();
             var motion = (FDX_SecondaryMotion)target;
             if (PruneEmptyGroups(motion)) serializedObject.Update();
-            FDX_AttachmentManager relatedManager = GetRelatedManager(motion);
-            if (GUILayout.Button(new GUIContent("顯示腳本檔案", "Locate this component script in the Project window")))
+            FDX_SecondaryMotionManager relatedManager = GetRelatedManager(motion);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginDisabledGroup(relatedManager == null);
+            bool returnToManager = GUILayout.Button(new GUIContent("回到 Manager", "跳到只顯示擺動物件與全域模擬開關的 Secondary Motion Manager。"));
+            EditorGUI.EndDisabledGroup();
+            if (GUILayout.Button(new GUIContent("顯示腳本檔案", "在 Project 視窗顯示此元件的腳本檔案。")))
             {
                 MonoScript script = MonoScript.FromMonoBehaviour(motion);
                 Selection.activeObject = script;
                 EditorGUIUtility.PingObject(script);
             }
-            EditorGUILayout.BeginHorizontal();
-            if (relatedManager != null && GUILayout.Button(new GUIContent("回到 Manager", "Select the related Attachment Manager")))
+            if (GUILayout.Button(new GUIContent("全部重設", "將此動態元件恢復成剛掛上腳本的狀態。"))) ResetEverything();
+            EditorGUILayout.EndHorizontal();
+            if (returnToManager)
             {
                 Selection.activeGameObject = relatedManager.gameObject;
                 EditorGUIUtility.PingObject(relatedManager.gameObject);
-                EditorGUILayout.EndHorizontal();
                 GUIUtility.ExitGUI();
             }
-            if (GUILayout.Button(new GUIContent("全部重設", "Reset this component to its initial state"))) ResetEverything();
-            EditorGUILayout.EndHorizontal();
             EditorGUILayout.BeginHorizontal();
             simulate.boolValue = GUILayout.Toggle(simulate.boolValue, "動態模擬", EditorStyles.miniButton);
             SerializedProperty previewAutoSway = settings.FindPropertyRelative("previewAutoSway");
@@ -1881,6 +1934,9 @@ namespace Faidlix.UnityTools.Editor
             if (globalMotionSettingsExpanded.boolValue)
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Space(36f);
+                EditorGUILayout.BeginVertical();
                 FDX_InspectorGUI.DrawMotionSettings(settings);
                 EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button(new GUIContent("複製設定", "Copy Settings")))
@@ -1904,6 +1960,8 @@ namespace Faidlix.UnityTools.Editor
                 }
                 EditorGUILayout.EndHorizontal();
                 EditorGUILayout.EndVertical();
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.EndVertical();
             }
 
             if ((FDX_SecondaryMotion.MotionSource)motionSource.enumValueIndex !=
@@ -1919,23 +1977,28 @@ namespace Faidlix.UnityTools.Editor
                         "Individual Motion Settings"), 36f);
                 if (!expanded.boolValue) continue;
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Space(36f);
+                EditorGUILayout.BeginVertical();
                 FDX_InspectorGUI.DrawMotionSettings(chain.FindPropertyRelative("motionSettings"));
+                EditorGUILayout.EndVertical();
+                EditorGUILayout.EndHorizontal();
                 EditorGUILayout.EndVertical();
             }
         }
 
-        private static FDX_AttachmentManager FindRelatedManager(FDX_SecondaryMotion motion)
+        private static FDX_SecondaryMotionManager FindRelatedManager(FDX_SecondaryMotion motion)
         {
             if (motion == null) return null;
-            FDX_AttachmentManager manager = motion.GetComponentInParent<FDX_AttachmentManager>();
-            if (manager != null && manager.FindAllMotionComponents().Contains(motion)) return manager;
-            foreach (FDX_AttachmentManager candidate in Resources.FindObjectsOfTypeAll<FDX_AttachmentManager>())
-                if (candidate != null && candidate.gameObject.scene.IsValid() && candidate.FindAllMotionComponents().Contains(motion))
+            FDX_SecondaryMotionManager manager = motion.GetComponentInParent<FDX_SecondaryMotionManager>();
+            if (manager != null && manager.FindMotionComponents().Contains(motion)) return manager;
+            foreach (FDX_SecondaryMotionManager candidate in Resources.FindObjectsOfTypeAll<FDX_SecondaryMotionManager>())
+                if (candidate != null && candidate.gameObject.scene.IsValid() && candidate.FindMotionComponents().Contains(motion))
                     return candidate;
             return null;
         }
 
-        private FDX_AttachmentManager GetRelatedManager(FDX_SecondaryMotion motion)
+        private FDX_SecondaryMotionManager GetRelatedManager(FDX_SecondaryMotion motion)
         {
             double now = EditorApplication.timeSinceStartup;
             if (!relatedManagerCacheDirty && cachedRelatedManager != null) return cachedRelatedManager;
@@ -3162,7 +3225,9 @@ namespace Faidlix.UnityTools.Editor
 
         private void DuringSceneGUI(SceneView sceneView)
         {
-            if (editingTip == null || target == null) return;
+            if (target == null) return;
+            DrawColliderEditor(sceneView, FDX_InspectorGUI.EditingCollider);
+            if (editingTip == null) return;
             Handles.color = Color.yellow;
             EditorGUI.BeginChangeCheck();
             Vector3 next = Handles.PositionHandle(editingTip.position, editingTip.rotation);
@@ -3180,6 +3245,109 @@ namespace Faidlix.UnityTools.Editor
                 EditorUtility.SetDirty(editingTip);
                 sceneView.Repaint();
             }
+        }
+
+        private static void DrawColliderEditor(SceneView sceneView, Collider collider)
+        {
+            if (collider == null || !collider.gameObject.scene.IsValid()) return;
+            Transform transform = collider.transform;
+            Handles.color = new Color(1f, 0.55f, 0.1f, 1f);
+
+            if (collider is SphereCollider sphere)
+            {
+                Vector3 scale = Abs(transform.lossyScale);
+                float radiusScale = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
+                Vector3 center = transform.TransformPoint(sphere.center);
+                EditorGUI.BeginChangeCheck();
+                Vector3 nextCenter = Handles.PositionHandle(center, transform.rotation);
+                float nextRadius = Handles.RadiusHandle(transform.rotation, nextCenter,
+                    sphere.radius * Mathf.Max(radiusScale, 0.000001f));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(sphere, "Edit FDX Sphere Collider");
+                    sphere.center = transform.InverseTransformPoint(nextCenter);
+                    sphere.radius = Mathf.Max(0.0001f, nextRadius / Mathf.Max(radiusScale, 0.000001f));
+                    EditorUtility.SetDirty(sphere);
+                    sceneView.Repaint();
+                }
+                return;
+            }
+
+            if (collider is BoxCollider box)
+            {
+                Vector3 scale = Abs(transform.lossyScale);
+                Vector3 center = transform.TransformPoint(box.center);
+                Vector3 worldSize = Vector3.Scale(box.size, scale);
+                EditorGUI.BeginChangeCheck();
+                Vector3 nextCenter = Handles.PositionHandle(center, transform.rotation);
+                Vector3 nextWorldSize = Handles.ScaleHandle(worldSize, nextCenter, transform.rotation,
+                    HandleUtility.GetHandleSize(nextCenter));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(box, "Edit FDX Box Collider");
+                    box.center = transform.InverseTransformPoint(nextCenter);
+                    box.size = new Vector3(
+                        Mathf.Max(0.0001f, Mathf.Abs(nextWorldSize.x) / Mathf.Max(scale.x, 0.000001f)),
+                        Mathf.Max(0.0001f, Mathf.Abs(nextWorldSize.y) / Mathf.Max(scale.y, 0.000001f)),
+                        Mathf.Max(0.0001f, Mathf.Abs(nextWorldSize.z) / Mathf.Max(scale.z, 0.000001f)));
+                    EditorUtility.SetDirty(box);
+                    sceneView.Repaint();
+                }
+                return;
+            }
+
+            if (collider is CapsuleCollider capsule)
+            {
+                Vector3 scale = Abs(transform.lossyScale);
+                Vector3 localAxis = capsule.direction == 0 ? Vector3.right :
+                    capsule.direction == 1 ? Vector3.up : Vector3.forward;
+                float axisScale = capsule.direction == 0 ? scale.x : capsule.direction == 1 ? scale.y : scale.z;
+                float radialScale = capsule.direction == 0 ? Mathf.Max(scale.y, scale.z) :
+                    capsule.direction == 1 ? Mathf.Max(scale.x, scale.z) : Mathf.Max(scale.x, scale.y);
+                Vector3 axis = transform.TransformDirection(localAxis).normalized;
+                Vector3 center = transform.TransformPoint(capsule.center);
+                float worldRadius = capsule.radius * Mathf.Max(radialScale, 0.000001f);
+                float halfHeight = Mathf.Max(worldRadius, capsule.height * Mathf.Max(axisScale, 0.000001f) * 0.5f);
+                float capSize = HandleUtility.GetHandleSize(center) * 0.08f;
+                EditorGUI.BeginChangeCheck();
+                Vector3 movedCenter = Handles.PositionHandle(center, transform.rotation);
+                float nextWorldRadius = Handles.RadiusHandle(transform.rotation, movedCenter, worldRadius);
+                Vector3 top = Handles.Slider(movedCenter + axis * halfHeight, axis, capSize,
+                    Handles.CubeHandleCap, 0f);
+                Vector3 bottom = Handles.Slider(movedCenter - axis * halfHeight, -axis, capSize,
+                    Handles.CubeHandleCap, 0f);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(capsule, "Edit FDX Capsule Collider");
+                    Vector3 nextCenter = (top + bottom) * 0.5f;
+                    float nextWorldHeight = Mathf.Max(nextWorldRadius * 2f, Mathf.Abs(Vector3.Dot(top - bottom, axis)));
+                    capsule.center = transform.InverseTransformPoint(nextCenter);
+                    capsule.radius = Mathf.Max(0.0001f, nextWorldRadius / Mathf.Max(radialScale, 0.000001f));
+                    capsule.height = Mathf.Max(capsule.radius * 2f,
+                        nextWorldHeight / Mathf.Max(axisScale, 0.000001f));
+                    EditorUtility.SetDirty(capsule);
+                    sceneView.Repaint();
+                }
+                return;
+            }
+
+            EditorGUI.BeginChangeCheck();
+            Vector3 position = Handles.PositionHandle(transform.position, transform.rotation);
+            Vector3 localScale = Handles.ScaleHandle(transform.localScale, position, transform.rotation,
+                HandleUtility.GetHandleSize(position));
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(transform, "Edit FDX Collider Transform");
+                transform.position = position;
+                transform.localScale = localScale;
+                EditorUtility.SetDirty(transform);
+                sceneView.Repaint();
+            }
+        }
+
+        private static Vector3 Abs(Vector3 value)
+        {
+            return new Vector3(Mathf.Abs(value.x), Mathf.Abs(value.y), Mathf.Abs(value.z));
         }
 
         private void SetEditingTip(Transform next)

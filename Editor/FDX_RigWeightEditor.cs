@@ -360,6 +360,10 @@ namespace Faidlix.UnityTools.Editor
                     throw new InvalidOperationException("New motion did not default to existing bones.");
                 motion.Source = FDX_SecondaryMotion.MotionSource.AutomaticPivot;
                 motion.PivotGroups[0].pivot = ear.transform;
+                var findRelatedManager = typeof(FDX_SecondaryMotionBilingualInspector).GetMethod("FindRelatedManager",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                if (findRelatedManager == null || !ReferenceEquals(findRelatedManager.Invoke(null, new object[] { motion }), motionManager))
+                    throw new InvalidOperationException("Return-to-Manager did not resolve the Secondary Motion Manager.");
                 motion.Settings.gravityStrength = 0f;
                 motion.Settings.constantWind = Vector3.zero;
                 motion.Settings.enableDistanceSimulation = false;
@@ -520,7 +524,7 @@ namespace Faidlix.UnityTools.Editor
                 if (meshObject.GetComponent<FDX_SecondaryMotion>() != null || meshObject.GetComponent<MeshRenderer>() == null ||
                     meshObject.GetComponent<SkinnedMeshRenderer>() != null)
                     throw new InvalidOperationException("Static conversion did not restore the renderer.");
-                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 collision=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1");
+                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 collision=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1 return_manager=1");
             }
             catch (Exception exception)
             {
@@ -587,7 +591,7 @@ namespace Faidlix.UnityTools.Editor
             second = p2 + d2 * t;
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.8.0")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.8.1")]
         public static void RunBatchExportPackage()
         {
             try
@@ -598,7 +602,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.8.0.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.8.1.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,
