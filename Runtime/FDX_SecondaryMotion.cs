@@ -234,6 +234,9 @@ namespace Faidlix.UnityTools
             public bool soloPreview;
             public bool expanded = true;
             public bool commonSettingsExpanded;
+            public bool useMotionSettings;
+            [HideInInspector] public bool motionSettingsExpanded = true;
+            public FDX_MotionSettings motionSettings = new FDX_MotionSettings();
             public List<string> chainIds = new List<string>();
         }
 
@@ -720,7 +723,23 @@ namespace Faidlix.UnityTools
         private void AddBoneChain(BoneChain chain, HashSet<Transform> used)
         {
             if (chain == null || !chain.enabled || chain.root == null) return;
-            AddBoneRecursive(chain.root, chain, used, 0);
+            AddBoneRecursive(chain.root, chain, used, 0, ResolveMotionSettings(chain));
+        }
+
+        private FDX_MotionSettings ResolveMotionSettings(BoneChain chain)
+        {
+            if (chain == null) return null;
+            if (chain.useIndividualMotionSettings) return chain.motionSettings;
+            BoneChainGroup group = FindOwningGroup(chain);
+            var visited = new HashSet<string>();
+            while (group != null)
+            {
+                if (group.useMotionSettings) return group.motionSettings;
+                if (string.IsNullOrEmpty(group.parentId) || !visited.Add(group.parentId)) break;
+                string parentId = group.parentId;
+                group = boneChainGroups.Find(candidate => candidate != null && candidate.id == parentId);
+            }
+            return null;
         }
 
         private BoneChainGroup FindOwningGroup(BoneChain chain)
@@ -791,6 +810,14 @@ namespace Faidlix.UnityTools
                 if (chain.motionSettings == null) chain.motionSettings = new FDX_MotionSettings();
                 if (chain.motionSettings.explicitColliders == null)
                     chain.motionSettings.explicitColliders = new List<Collider>();
+            }
+            foreach (BoneChainGroup group in boneChainGroups)
+            {
+                if (group == null) continue;
+                if (group.chainIds == null) group.chainIds = new List<string>();
+                if (group.motionSettings == null) group.motionSettings = new FDX_MotionSettings();
+                if (group.motionSettings.explicitColliders == null)
+                    group.motionSettings.explicitColliders = new List<Collider>();
             }
             foreach (BoneEntry entry in existingBones)
                 if (entry != null && entry.axisSettings == null) entry.axisSettings = new FDX_AxisControlSettings();
@@ -953,7 +980,8 @@ namespace Faidlix.UnityTools
             foreach (FlexibleEndPoint child in point.children) EnsureEndPointData(child);
         }
 
-        private bool AddBoneRecursive(Transform bone, BoneChain chain, HashSet<Transform> used, int depth)
+        private bool AddBoneRecursive(Transform bone, BoneChain chain, HashSet<Transform> used, int depth,
+            FDX_MotionSettings motionSettings)
         {
             if (bone == null || chain.excludedBones.Contains(bone)) return false;
             if (used.Add(bone))
@@ -963,14 +991,13 @@ namespace Faidlix.UnityTools
                     ? bone.InverseTransformDirection(directionChild.position - bone.position)
                     : Vector3.down;
                 float length = directionChild != null ? Vector3.Distance(bone.position, directionChild.position) : 0.1f;
-                AddState(bone, axis, length, chain.influence, chain.axisSettings, null,
-                    chain.useIndividualMotionSettings ? chain.motionSettings : null);
+                AddState(bone, axis, length, chain.influence, chain.axisSettings, null, motionSettings);
             }
             if (!chain.includeChildBones || (!chain.allBonesSway && depth + 1 >= Mathf.Max(1, chain.boneMotionLevels)))
                 return true;
             int childLimit = chain.includeAllBranches ? bone.childCount : Mathf.Min(1, bone.childCount);
             for (int i = 0; i < childLimit; i++)
-                AddBoneRecursive(bone.GetChild(i), chain, used, depth + 1);
+                AddBoneRecursive(bone.GetChild(i), chain, used, depth + 1, motionSettings);
             return true;
         }
 
@@ -1240,7 +1267,13 @@ namespace Faidlix.UnityTools
 
         private bool IsUsableCollider(Collider col)
         {
-            return col != null && col.enabled && !col.isTrigger && !col.transform.IsChildOf(transform);
+            if (col == null || !col.enabled || col.isTrigger) return false;
+            foreach (NodeState state in nodeStates)
+            {
+                if (state == null || state.target == null) continue;
+                if (col.transform == state.target || col.transform.IsChildOf(state.target)) return false;
+            }
+            return true;
         }
 
         private Vector3 CalculateSegmentCollisionCorrection(Vector3 start, Vector3 end, float radius)

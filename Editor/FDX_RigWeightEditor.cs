@@ -419,6 +419,7 @@ namespace Faidlix.UnityTools.Editor
                 individualMotion.Settings.enableDistanceSimulation = false;
                 var individualChain = new FDX_SecondaryMotion.BoneChain
                 {
+                    editorId = "tail-chain",
                     displayName = "Tail",
                     root = individualBone.transform,
                     includeChildBones = false,
@@ -432,6 +433,35 @@ namespace Faidlix.UnityTools.Editor
                 for (int i = 0; i < 30; i++) individualMotion.PreviewStep(1f / 60f);
                 if (Quaternion.Angle(individualBone.transform.localRotation, Quaternion.identity) < 0.01f)
                     throw new InvalidOperationException("Individual bone-chain motion settings were not used by the simulation.");
+                var parentMotionGroup = new FDX_SecondaryMotion.BoneChainGroup
+                {
+                    id = "tail-parent",
+                    displayName = "Tail Parent",
+                    useMotionSettings = true
+                };
+                var childMotionGroup = new FDX_SecondaryMotion.BoneChainGroup
+                {
+                    id = "tail-child",
+                    parentId = parentMotionGroup.id,
+                    displayName = "Tail Child",
+                    chainIds = new List<string> { individualChain.editorId }
+                };
+                individualMotion.BoneChainGroups.Add(parentMotionGroup);
+                individualMotion.BoneChainGroups.Add(childMotionGroup);
+                var resolveMotionSettings = typeof(FDX_SecondaryMotion).GetMethod("ResolveMotionSettings",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                individualChain.useIndividualMotionSettings = false;
+                if (!ReferenceEquals(resolveMotionSettings.Invoke(individualMotion, new object[] { individualChain }),
+                    parentMotionGroup.motionSettings))
+                    throw new InvalidOperationException("A child group did not inherit its parent group motion settings.");
+                childMotionGroup.useMotionSettings = true;
+                if (!ReferenceEquals(resolveMotionSettings.Invoke(individualMotion, new object[] { individualChain }),
+                    childMotionGroup.motionSettings))
+                    throw new InvalidOperationException("The nearest group motion settings did not override its parent.");
+                individualChain.useIndividualMotionSettings = true;
+                if (!ReferenceEquals(resolveMotionSettings.Invoke(individualMotion, new object[] { individualChain }),
+                    individualChain.motionSettings))
+                    throw new InvalidOperationException("Individual motion settings did not override group settings.");
 
                 var collisionRig = new GameObject("CollisionRegression");
                 collisionRig.transform.SetParent(root.transform, false);
@@ -442,7 +472,7 @@ namespace Faidlix.UnityTools.Editor
                 collisionTip.transform.SetParent(collisionBone.transform, false);
                 collisionTip.transform.localPosition = Vector3.right;
                 var animatedColliderObject = new GameObject("AnimatedCapsuleCollider");
-                animatedColliderObject.transform.SetParent(root.transform, false);
+                animatedColliderObject.transform.SetParent(collisionRig.transform, false);
                 animatedColliderObject.transform.localRotation = Quaternion.Euler(0f, 0f, 20f);
                 animatedColliderObject.transform.localScale = new Vector3(1.2f, 0.9f, 1.1f);
                 var animatedCapsule = animatedColliderObject.AddComponent<CapsuleCollider>();
@@ -524,7 +554,7 @@ namespace Faidlix.UnityTools.Editor
                 if (meshObject.GetComponent<FDX_SecondaryMotion>() != null || meshObject.GetComponent<MeshRenderer>() == null ||
                     meshObject.GetComponent<SkinnedMeshRenderer>() != null)
                     throw new InvalidOperationException("Static conversion did not restore the renderer.");
-                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 collision=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1 return_manager=1");
+                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 group_motion=1 collision=1 descendant_collider=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1 return_manager=1");
             }
             catch (Exception exception)
             {
@@ -591,7 +621,7 @@ namespace Faidlix.UnityTools.Editor
             second = p2 + d2 * t;
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.8.1")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.9.0")]
         public static void RunBatchExportPackage()
         {
             try
@@ -602,7 +632,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.8.1.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.9.0.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,
