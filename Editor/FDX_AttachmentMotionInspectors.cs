@@ -73,7 +73,9 @@ namespace Faidlix.UnityTools.Editor
                     DrawColliderList(colliders);
                     EditorGUI.indentLevel--;
                 }
-                EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionLayers"), C("碰撞圖層", "自動搜尋碰撞器時要包含的 Unity Layer。"));
+                using (new EditorGUI.DisabledScope(HasAssignedCollider(colliders)))
+                    EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionLayers"),
+                        C("碰撞圖層", "碰撞體清單為空時，才會依這裡選擇的 Unity Layer 自動搜尋碰撞器。"));
                 EditorGUILayout.Slider(property.FindPropertyRelative("collisionRadius"), 0.001f, 2f,
                     C("碰撞半徑", "骨架每一段周圍用來偵測及推出碰撞的半徑。"));
                 EditorGUILayout.PropertyField(property.FindPropertyRelative("collisionStrength"), C("碰撞強度", "碰撞修正影響擺動速度的強度；硬性防穿透仍會保持生效。"));
@@ -115,6 +117,13 @@ namespace Faidlix.UnityTools.Editor
                 }
                 EditorGUILayout.EndHorizontal();
             }
+        }
+
+        private static bool HasAssignedCollider(SerializedProperty colliders)
+        {
+            for (int i = 0; i < colliders.arraySize; i++)
+                if (colliders.GetArrayElementAtIndex(i).objectReferenceValue != null) return true;
+            return false;
         }
 
         internal static void StopColliderEditing()
@@ -287,13 +296,14 @@ namespace Faidlix.UnityTools.Editor
             }
         }
 
-        public static void DrawAxisSettings(SerializedProperty property, bool showIndividualDynamics = true)
+        public static void DrawAxisSettings(SerializedProperty property, bool showIndividualDynamics = true,
+            bool useTextButtons = false)
         {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PrefixLabel(C("啟用軸向", "Enabled Axes"));
-            DrawEnabledAxis(property.FindPropertyRelative("lockX"), "X");
-            DrawEnabledAxis(property.FindPropertyRelative("lockY"), "Y");
-            DrawEnabledAxis(property.FindPropertyRelative("lockZ"), "Z");
+            DrawEnabledAxis(property.FindPropertyRelative("lockX"), "X", useTextButtons);
+            DrawEnabledAxis(property.FindPropertyRelative("lockY"), "Y", useTextButtons);
+            DrawEnabledAxis(property.FindPropertyRelative("lockZ"), "Z", useTextButtons);
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
@@ -322,11 +332,14 @@ namespace Faidlix.UnityTools.Editor
             EditorGUI.indentLevel--;
         }
 
-        private static void DrawEnabledAxis(SerializedProperty lockProperty, string axis)
+        private static void DrawEnabledAxis(SerializedProperty lockProperty, string axis, bool useTextButton)
         {
             bool enabled = !lockProperty.boolValue;
             EditorGUI.BeginChangeCheck();
-            enabled = EditorGUILayout.ToggleLeft(new GUIContent(axis, "Enable " + axis + " Axis"), enabled, GUILayout.Width(36f));
+            GUIContent content = new GUIContent(axis, $"啟用或停用本地 {axis} 軸擺動。");
+            enabled = useTextButton
+                ? GUILayout.Toggle(enabled, content, EditorStyles.miniButton, GUILayout.Width(48f))
+                : EditorGUILayout.ToggleLeft(content, enabled, GUILayout.Width(36f));
             if (EditorGUI.EndChangeCheck()) lockProperty.boolValue = !enabled;
         }
 
@@ -2208,7 +2221,7 @@ namespace Faidlix.UnityTools.Editor
                 new GUIContent("骨架鏈起點大小", "調整場景中起點 Gizmo 的大小，不影響物理計算。"));
             EditorGUILayout.PropertyField(chain.FindPropertyRelative("scaleGizmoByDepth"),
                 new GUIContent("逐節縮小（每節 0.8 倍）", "讓後段骨頭的顯示 Gizmo 逐節縮小，方便辨識鏈條方向。"));
-            FDX_InspectorGUI.DrawAxisSettings(chain.FindPropertyRelative("axisSettings"), false);
+            FDX_InspectorGUI.DrawAxisSettings(chain.FindPropertyRelative("axisSettings"), false, true);
             SerializedProperty individualMotion = chain.FindPropertyRelative("useIndividualMotionSettings");
             individualMotion.boolValue = GUILayout.Toggle(individualMotion.boolValue,
                 new GUIContent("使用各別動態設定", "啟用後這條骨架鏈使用自己的動態設定，優先於群組與全域設定。"),

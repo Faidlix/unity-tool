@@ -1252,8 +1252,12 @@ namespace Faidlix.UnityTools
             FDX_MotionSettings activeSettings)
         {
             collisionCandidates.Clear();
-            foreach (Collider col in activeSettings.explicitColliders)
-                if (IsUsableCollider(col)) collisionCandidates.Add(col);
+            bool useExplicitList = activeSettings.explicitColliders != null &&
+                                   activeSettings.explicitColliders.Exists(col => col != null);
+            if (activeSettings.explicitColliders != null)
+                foreach (Collider col in activeSettings.explicitColliders)
+                    if (IsUsableCollider(col)) collisionCandidates.Add(col);
+            if (useExplicitList) return;
             int count = Physics.OverlapCapsuleNonAlloc(start, end, activeSettings.collisionRadius, collisionBuffer,
                 activeSettings.collisionLayers, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < count; i++)

@@ -505,7 +505,19 @@ namespace Faidlix.UnityTools.Editor
                 if (ReferenceEquals(collisionMotion.Settings.explicitColliders,
                     collisionMotion.BoneChains[0].motionSettings.explicitColliders))
                     throw new InvalidOperationException("Global and per-chain collider lists were not independent.");
+                var unlistedColliderObject = new GameObject("UnlistedCapsuleCollider");
+                unlistedColliderObject.transform.SetParent(collisionRig.transform, false);
+                unlistedColliderObject.transform.localRotation = animatedColliderObject.transform.localRotation;
+                unlistedColliderObject.transform.localScale = animatedColliderObject.transform.localScale;
+                var unlistedCapsule = unlistedColliderObject.AddComponent<CapsuleCollider>();
+                unlistedCapsule.direction = animatedCapsule.direction;
+                unlistedCapsule.height = animatedCapsule.height;
+                unlistedCapsule.radius = animatedCapsule.radius;
+                unlistedColliderObject.transform.position = collisionRig.transform.position + new Vector3(0.75f, 0.12f, 0f);
                 collisionMotion.PreviewStep(1f / 60f);
+                if (Quaternion.Angle(collisionBone.transform.localRotation, Quaternion.identity) > 0.001f)
+                    throw new InvalidOperationException("A collider outside the explicit list affected the simulation.");
+                DestroyImmediate(unlistedColliderObject);
                 animatedColliderObject.transform.position = collisionRig.transform.position + new Vector3(0.75f, 0.12f, 0f);
                 collisionMotion.PreviewStep(1f / 60f);
                 Vector3 collisionEnd = collisionBone.transform.position + collisionBone.transform.right;
@@ -554,7 +566,7 @@ namespace Faidlix.UnityTools.Editor
                 if (meshObject.GetComponent<FDX_SecondaryMotion>() != null || meshObject.GetComponent<MeshRenderer>() == null ||
                     meshObject.GetComponent<SkinnedMeshRenderer>() != null)
                     throw new InvalidOperationException("Static conversion did not restore the renderer.");
-                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 group_motion=1 collision=1 descendant_collider=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1 return_manager=1");
+                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 group_motion=1 collision=1 collision_whitelist=1 descendant_collider=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1 return_manager=1");
             }
             catch (Exception exception)
             {
@@ -621,7 +633,7 @@ namespace Faidlix.UnityTools.Editor
             second = p2 + d2 * t;
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.9.0")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.9.1")]
         public static void RunBatchExportPackage()
         {
             try
@@ -632,7 +644,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.9.0.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.9.1.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,
