@@ -2157,11 +2157,10 @@ namespace Faidlix.UnityTools.Editor
             EditorGUILayout.BeginHorizontal();
             SerializedProperty chainEnabled = chain.FindPropertyRelative("enabled");
             chainEnabled.boolValue = GUILayout.Toggle(chainEnabled.boolValue, GUIContent.none, GUILayout.Width(18f));
-            GUILayout.Space(10f);
             SerializedProperty expanded = chain.FindPropertyRelative("expanded");
-            Rect chainFoldoutRect = GUILayoutUtility.GetRect(14f, EditorGUIUtility.singleLineHeight, GUILayout.Width(14f));
-            expanded.boolValue = EditorGUI.Foldout(chainFoldoutRect, expanded.boolValue, GUIContent.none, true);
-            GUILayout.Label("群組名稱", GUILayout.Width(62f));
+            GUIContent chainFoldoutLabel = new GUIContent("群組名稱");
+            Rect chainFoldoutRect = GUILayoutUtility.GetRect(chainFoldoutLabel, EditorStyles.foldout, GUILayout.Width(92f));
+            expanded.boolValue = EditorGUI.Foldout(chainFoldoutRect, expanded.boolValue, chainFoldoutLabel, true);
             EditorGUILayout.PropertyField(chain.FindPropertyRelative("displayName"), GUIContent.none, GUILayout.MinWidth(50f));
             EditorGUI.BeginChangeCheck();
             EditorGUILayout.PropertyField(chain.FindPropertyRelative("root"), GUIContent.none, GUILayout.MinWidth(90f));
@@ -2240,7 +2239,6 @@ namespace Faidlix.UnityTools.Editor
                 EditorGUILayout.BeginHorizontal();
                 EditorGUI.BeginChangeCheck();
                 bool groupEnabled = GUILayout.Toggle(group.enabled, GUIContent.none, GUILayout.Width(18f));
-                GUILayout.Space(10f);
                 bool expanded = EditorGUILayout.Foldout(group.expanded,
                     $"{group.displayName}（{CountChainsRecursive(group.id)}）", true);
                 if (EditorGUI.EndChangeCheck())
@@ -2254,12 +2252,7 @@ namespace Faidlix.UnityTools.Editor
                 using (new EditorGUI.DisabledScope(!CanClassify(group.id)))
                     if (GUILayout.Button(new GUIContent("自動分類", "依骨架鏈名稱與左右側規則，在此群組內建立子群組。"))) { ClassifyChains(group.id); GUIUtility.ExitGUI(); }
                 if (GUILayout.Button(new GUIContent("取消此分組", "移除此群組，但保留其中的骨架鏈與子群組。"))) { ResetGroup(group.id); GUIUtility.ExitGUI(); }
-                int oppositeState = GetOppositeGroupState(group.id);
-                string oppositeLabel = oppositeState == 2 ? "補上另一側骨架" :
-                    oppositeState == 1 ? "另一側骨架已加入" : "找不到另一側骨架";
-                using (new EditorGUI.DisabledScope(oppositeState != 2))
-                    if (GUILayout.Button(new GUIContent(oppositeLabel, "尋找群組內骨架鏈的左右對側，並加入尚未建立的對側骨架鏈。"))) { AddOppositeForGroup(group.id); GUIUtility.ExitGUI(); }
-                if (GUILayout.Button(new GUIContent("刪除群組骨架", "刪除此群組、子群組與其中全部骨架鏈。"))) { DeleteGroupChains(group.id); GUIUtility.ExitGUI(); }
+                if (GUILayout.Button(new GUIContent("移除骨架組", "移除此群組、子群組與其中全部骨架鏈設定；場景中的骨頭會保留。"))) { DeleteGroupChains(group.id); GUIUtility.ExitGUI(); }
                 EditorGUILayout.EndHorizontal();
                 if (expanded)
                 {
@@ -2336,6 +2329,7 @@ namespace Faidlix.UnityTools.Editor
                 (chain, value) => chain.includeAllBranches = value);
             DrawCommonBool("全部骨頭晃動", "啟用後整條骨架鏈都參與擺動；關閉時依各骨架鏈的晃動數量限制。", indices, chain => chain.allBonesSway,
                 (chain, value) => chain.allBonesSway = value);
+            DrawCommonBoneMotionLevels(indices);
             DrawCommonFloat("擺動強度倍率", "調整群組內骨架鏈吃到動態效果的比例；0 不擺動，1 原強度，2 加倍。", indices, chain => chain.influence,
                 (chain, value) => chain.influence = value, 0f, 2f);
             DrawCommonFloat("骨架鏈起點大小", "調整場景中骨架鏈起點 Gizmo 的顯示大小，不影響物理計算。", indices, chain => chain.displayRadius,
@@ -2348,6 +2342,53 @@ namespace Faidlix.UnityTools.Editor
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawCommonBoneMotionLevels(List<int> indices)
+        {
+            var motion = (FDX_SecondaryMotion)target;
+            if (!TryGetCommonBoneMotionDepth(motion, indices, out int maximum, out bool settingsAllowShared))
+            {
+                if (settingsAllowShared)
+                    EditorGUILayout.HelpBox("群組內的骨架數量不同，請在各骨架鏈中分別設定骨頭晃動數量。", MessageType.Info);
+                return;
+            }
+
+            int value = Mathf.Clamp(motion.BoneChains[indices[0]].boneMotionLevels, 1, maximum);
+            bool mixed = indices.Exists(i => Mathf.Clamp(motion.BoneChains[i].boneMotionLevels, 1, maximum) != value);
+            EditorGUI.showMixedValue = mixed;
+            EditorGUI.BeginChangeCheck();
+            int next = EditorGUILayout.IntSlider(
+                new GUIContent("骨頭晃動數量", "群組內骨架數量相同時，可一次設定從各起點開始參與擺動的骨頭數量，並套用到下方全部骨架鏈。"),
+                value, 1, maximum);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(motion, "Edit Common Bone Motion Levels");
+                foreach (int index in indices) motion.BoneChains[index].boneMotionLevels = next;
+                EditorUtility.SetDirty(motion);
+            }
+            EditorGUI.showMixedValue = false;
+        }
+
+        internal static bool TryGetCommonBoneMotionDepth(FDX_SecondaryMotion motion, List<int> indices,
+            out int maximum, out bool settingsAllowShared)
+        {
+            maximum = 1;
+            settingsAllowShared = motion != null && indices != null && indices.Count > 0;
+            if (!settingsAllowShared) return false;
+            foreach (int index in indices)
+            {
+                if (index < 0 || index >= motion.BoneChains.Count || motion.BoneChains[index] == null ||
+                    !motion.BoneChains[index].includeChildBones || motion.BoneChains[index].allBonesSway)
+                {
+                    settingsAllowShared = false;
+                    return false;
+                }
+            }
+
+            int expectedDepth = FDX_SecondaryMotion.GetBoneChainDepth(motion.BoneChains[indices[0]]);
+            maximum = expectedDepth;
+            return !indices.Exists(i => FDX_SecondaryMotion.GetBoneChainDepth(motion.BoneChains[i]) != expectedDepth);
         }
 
         private void DrawCommonBool(string label, string tooltip, List<int> indices,
@@ -2619,7 +2660,7 @@ namespace Faidlix.UnityTools.Editor
 
         private void DeleteGroupChains(string groupId)
         {
-            if (!EditorUtility.DisplayDialog("刪除群組骨架", "移除此群組及子群組中的骨架鏈設定？場景中的骨頭會保留。", "刪除", "取消")) return;
+            if (!EditorUtility.DisplayDialog("移除骨架組", "移除此群組及子群組中的骨架鏈設定？場景中的骨頭會保留。", "移除", "取消")) return;
             serializedObject.ApplyModifiedProperties();
             var motion = (FDX_SecondaryMotion)target;
             Undo.RecordObject(motion, "Delete FDX Group Bone Chains");
@@ -2633,57 +2674,6 @@ namespace Faidlix.UnityTools.Editor
             PruneEmptyGroups(motion);
             motion.RebuildSimulation();
             EditorUtility.SetDirty(motion);
-        }
-
-        private void AddOppositeForGroup(string groupId)
-        {
-            serializedObject.ApplyModifiedProperties();
-            FDX_SecondaryMotion.BoneChainGroup group = GetGroup(groupId);
-            if (group == null) return;
-            var motion = (FDX_SecondaryMotion)target;
-            List<int> indices = GetChainIndicesRecursive(groupId);
-            int addedCount = 0;
-            int skippedCount = 0;
-            int missingCount = 0;
-            for (int i = indices.Count - 1; i >= 0; i--)
-            {
-                int previousCount = motion.BoneChains.Count;
-                int result = FindAndAddOppositeBone(indices[i], false);
-                if (result > 0) addedCount++;
-                else if (result == 0) skippedCount++;
-                else missingCount++;
-                if (motion.BoneChains.Count > previousCount)
-                {
-                    FDX_SecondaryMotion.BoneChain added = motion.BoneChains[motion.BoneChains.Count - 1];
-                    if (!group.chainIds.Contains(added.editorId)) group.chainIds.Add(added.editorId);
-                }
-            }
-            EditorUtility.SetDirty(motion);
-            serializedObject.Update();
-            EditorUtility.DisplayDialog("補上另一側骨架",
-                $"新增：{addedCount}\n略過：{skippedCount}\n找不到：{missingCount}", "確定");
-        }
-
-        // 0: no counterpart can be found, 1: all found counterparts already exist, 2: at least one can be added.
-        private int GetOppositeGroupState(string groupId)
-        {
-            var motion = (FDX_SecondaryMotion)target;
-            bool foundCounterpart = false;
-            foreach (int index in GetChainIndicesRecursive(groupId))
-            {
-                if (index < 0 || index >= motion.BoneChains.Count) continue;
-                FDX_SecondaryMotion.BoneChain chain = motion.BoneChains[index];
-                if (chain == null || chain.root == null) continue;
-                string oppositeName = SwapSideName(chain.root.name);
-                if (oppositeName.EndsWith("_Mirrored", StringComparison.Ordinal)) continue;
-                Transform searchRoot = motion.SimulationAnchor != null ? motion.SimulationAnchor : motion.transform.root;
-                Transform opposite = FindUniqueTransform(searchRoot, oppositeName);
-                if (opposite == null) continue;
-                foundCounterpart = true;
-                bool alreadyAdded = motion.BoneChains.Exists(existing => existing != null && existing.root == opposite);
-                if (!alreadyAdded) return 2;
-            }
-            return foundCounterpart ? 1 : 0;
         }
 
         private void DrawAutomaticPivot()

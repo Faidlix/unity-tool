@@ -186,6 +186,31 @@ namespace Faidlix.UnityTools.Editor
                     throw new InvalidOperationException("Bone-chain depth detection did not include the root and child.");
                 chain.allBonesSway = false;
                 chain.boneMotionLevels = 1;
+                var matchingRoot = new GameObject("Skirt_01.R");
+                matchingRoot.transform.SetParent(hipsObject.transform, false);
+                var matchingTip = new GameObject("Skirt_02.R_end");
+                matchingTip.transform.SetParent(matchingRoot.transform, false);
+                var matchingChain = new FDX_SecondaryMotion.BoneChain
+                {
+                    displayName = "Smoke Matching Skirt Chain",
+                    root = matchingRoot.transform,
+                    includeChildBones = true,
+                    includeEndBone = true,
+                    allBonesSway = false,
+                    boneMotionLevels = 1
+                };
+                chainMotion.BoneChains.Add(matchingChain);
+                var commonChainIndices = new List<int> { 0, 1 };
+                if (!FDX_SecondaryMotionBilingualInspector.TryGetCommonBoneMotionDepth(
+                        chainMotion, commonChainIndices, out int commonDepth, out bool commonSettingsAllowed) ||
+                    !commonSettingsAllowed || commonDepth != 2)
+                    throw new InvalidOperationException("Matching grouped bone chains did not expose a shared motion-level range.");
+                var unmatchedTip = new GameObject("Skirt_03.R_end");
+                unmatchedTip.transform.SetParent(matchingTip.transform, false);
+                if (FDX_SecondaryMotionBilingualInspector.TryGetCommonBoneMotionDepth(
+                        chainMotion, commonChainIndices, out _, out commonSettingsAllowed) || !commonSettingsAllowed)
+                    throw new InvalidOperationException("Mismatched grouped bone-chain depths still exposed a shared motion-level range.");
+                DestroyImmediate(unmatchedTip);
                 chainMotion.RebuildSimulation();
                 if (!chainMotion.HasValidExistingBones || chainMotion.ValidateSetup().Count != 0)
                     throw new InvalidOperationException("Existing bone-chain validation failed.");
@@ -566,7 +591,7 @@ namespace Faidlix.UnityTools.Editor
                 if (meshObject.GetComponent<FDX_SecondaryMotion>() != null || meshObject.GetComponent<MeshRenderer>() == null ||
                     meshObject.GetComponent<SkinnedMeshRenderer>() != null)
                     throw new InvalidOperationException("Static conversion did not restore the renderer.");
-                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 group_motion=1 collision=1 collision_whitelist=1 descendant_collider=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1 return_manager=1");
+                Debug.Log("FDX_REGRESSION_SMOKE_OK scan=1 auto_mount=1 attachment=1 release=1 bound_group=1 rotation=1 individual=1 group_motion=1 shared_levels=1 collision=1 collision_whitelist=1 descendant_collider=1 collider_migration=1 mirror=1 static=1 standalone=1 groups=1 manager_split=1 return_manager=1");
             }
             catch (Exception exception)
             {
@@ -633,7 +658,7 @@ namespace Faidlix.UnityTools.Editor
             second = p2 + d2 * t;
         }
 
-        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.9.1")]
+        [MenuItem("Tools/FDX/Attachment Motion/Export Package 1.9.2")]
         public static void RunBatchExportPackage()
         {
             try
@@ -644,7 +669,7 @@ namespace Faidlix.UnityTools.Editor
 
                 string releaseDirectory = Path.Combine(projectRoot, "Releases");
                 Directory.CreateDirectory(releaseDirectory);
-                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.9.1.unitypackage");
+                string outputPath = Path.Combine(releaseDirectory, "FDX_AttachmentMotion-1.9.2.unitypackage");
                 AssetDatabase.ExportPackage(
                     "Assets/Scripts/Custom/FDX_AttachmentMotion",
                     outputPath,
